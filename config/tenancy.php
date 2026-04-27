@@ -52,7 +52,7 @@ return [
          * Tenant database names are created like this:
          * prefix + tenant_id + suffix.
          */
-        'prefix' => 'tenatn_', // You can set this to something like 'tenant_' if you want all tenant databases to be prefixed with 'tenant_'.
+        'prefix' => 'tenant_', // You can set this to something like 'tenant_' if you want all tenant databases to be prefixed with 'tenant_'.
         'suffix' => '',
 
         /**

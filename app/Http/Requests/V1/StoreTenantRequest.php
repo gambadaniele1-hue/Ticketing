@@ -28,8 +28,8 @@ class StoreTenantRequest extends FormRequest
     {
         return [
             'companyName' => ['required', 'string', 'max:255'],
-            // FIX: Controlliamo l'ID del tenant, che è esattamente il sottodominio pulito
-            'subdomain' => ['required', 'string', 'alpha_dash', 'unique:tenants,id'],
+            // Validazione DNS-safe: solo minuscole, numeri e trattini (no underscore)
+            'subdomain' => ['required', 'string', 'min:3', 'max:63', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', 'unique:tenants,id'],
             'adminName' => ['required', 'string', 'max:255'],
             'adminEmail' => ['required', 'email', 'unique:global_identities,email'],
             'adminPassword' => ['required', 'string', 'min:8'],
@@ -44,7 +44,7 @@ class StoreTenantRequest extends FormRequest
     {
         return [
             'subdomain.unique' => 'Questo sottodominio è già in uso. Scegline un altro.',
-            'subdomain.alpha_dash' => 'Il sottodominio può contenere solo lettere, numeri, trattini e underscore.',
+            'subdomain.regex' => 'Il sottodominio può contenere solo lettere minuscole, numeri e trattini, senza iniziare o finire con un trattino.',
             'adminEmail.unique' => 'Questa email è già registrata nel sistema.',
             'planId.exists' => 'Il piano selezionato non è valido o non esiste.',
         ];

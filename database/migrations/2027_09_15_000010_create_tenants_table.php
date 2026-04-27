@@ -23,7 +23,6 @@ class CreateTenantsTable extends Migration
             $table->string('db_password')->nullable(); // db_password [cite: 212]
             $table->foreignId('plan_id')->constrained('plans')->cascadeOnDelete(); // plan_id [cite: 213]
             $table->timestamps();
-            $table->json('data')->nullable(); // Richiesto da stancl/tenancy
         });
     }
 

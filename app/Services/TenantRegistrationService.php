@@ -2,14 +2,13 @@
 
 namespace App\Services;
 
+use App\Exceptions\DatabaseAlreadyExistsException;
 use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
 use App\Models\Global\TenantMembership;
 use App\Models\Tenant\User as TenantUser;
 use App\Models\Tenant\Role as TenantRole;
-use InvalidArgumentException;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -19,36 +18,37 @@ class TenantRegistrationService
 {
     public function register(array $data): Tenant
     {
-        $requiredFields = ['planId', 'subdomain', 'companyName', 'adminName', 'adminEmail', 'adminPassword'];
-        if (!Arr::has($data, $requiredFields)) {
-            throw new InvalidArgumentException('Missing required registration fields.');
-        }
-
-        // 1. Validazione iniziale (se fallisce, si ferma subito senza sporcare nulla)
         $plan = Plan::findOrFail($data['planId']);
         $subdomain = strtolower($data['subdomain']);
         $isShared = $plan->database_type === 'shared';
-        $dbName = $isShared ? env('SHARED_DB_NAME', 'ticketing_shared') : 'tenant_' . $subdomain;
+        $dbName = $isShared
+            ? env('SHARED_DB_NAME', 'ticketing_shared')
+            : config('tenancy.database.prefix', 'tenant_') . $subdomain;
 
-        // Inizializziamo a null per il rollback manuale
         $globalIdentity = null;
         $tenant = null;
 
+        if (!$isShared && $this->dedicatedDatabaseAlreadyExists($dbName)) {
+            throw new DatabaseAlreadyExistsException(
+                'Impossibile completare la registrazione. Il sistema ha rilevato un conflitto sul database tenant.'
+            );
+        }
+
         try {
-            // NESSUNA DB::transaction! Facciamo le query dirette.
             $globalIdentity = GlobalIdentity::create([
                 'name' => $data['adminName'],
                 'email' => $data['adminEmail'],
                 'password' => Hash::make($data['adminPassword']),
             ]);
 
-            // Questo innesca la Pipeline di Tenancy (Creazione DB, Migrazioni, Seeder)
             $tenant = Tenant::create([
                 'id' => $subdomain,
                 'name' => $data['companyName'],
                 'plan_id' => $plan->id,
-                'db_name' => $dbName,
             ]);
+
+            $tenant->setInternal('db_name', $dbName);
+            $tenant->save();
 
             $tenant->domains()->create([
                 'domain' => $subdomain . '.' . env('APP_CENTRAL_DOMAIN', 'localhost'),
@@ -60,10 +60,7 @@ class TenantRegistrationService
                 'state' => 'accepted',
             ]);
 
-            // Lo switch di contesto ora funzionerà perfettamente
             $tenant->run(function () use ($globalIdentity) {
-                DB::purge();
-
                 $adminRole = TenantRole::firstOrCreate([
                     'name' => 'Admin',
                 ], [
@@ -79,27 +76,67 @@ class TenantRegistrationService
             return $tenant;
 
         } catch (Throwable $e) {
-            // ROLLBACK MANUALE (SAGA PATTERN)
-            Log::error('Errore Creazione Tenant: ' . $e->getMessage());
+            Log::error('Errore creazione tenant', [
+                'subdomain' => $subdomain,
+                'db_name' => $dbName,
+                'exception' => $e,
+            ]);
 
-            // Cancelliamo tutto in ordine inverso se le entità sono state create
+            if (!$tenant) {
+                $tenant = Tenant::find($subdomain);
+            }
+
             if ($tenant) {
                 try {
-                    // Questo droppa anche il DB fisico se Tenancy è configurato bene
+                    $tenant->domains()->delete();
+                    TenantMembership::where('tenant_id', $tenant->id)->delete();
                     $tenant->delete();
                 } catch (Throwable $cleanupError) {
-                    Log::warning('Rollback tenant fallito: ' . $cleanupError->getMessage());
+                    Log::warning('Rollback tenant fallito', [
+                        'tenant_id' => $tenant->id,
+                        'exception' => $cleanupError,
+                    ]);
                 }
             }
+
             if ($globalIdentity) {
                 try {
                     $globalIdentity->forceDelete();
                 } catch (Throwable $cleanupError) {
-                    Log::warning('Rollback global identity fallito: ' . $cleanupError->getMessage());
+                    Log::warning('Rollback global identity fallito', [
+                        'global_identity_id' => $globalIdentity->id,
+                        'exception' => $cleanupError,
+                    ]);
                 }
             }
 
             throw $e;
         }
+    }
+
+    private function dedicatedDatabaseAlreadyExists(string $dbName): bool
+    {
+        $connection = DB::connection(config('tenancy.database.central_connection'));
+        $driver = $connection->getDriverName();
+
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
+            $rows = $connection->select(
+                'SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?',
+                [$dbName]
+            );
+
+            return !empty($rows);
+        }
+
+        if ($driver === 'pgsql') {
+            $rows = $connection->select(
+                'SELECT datname FROM pg_database WHERE datname = ?',
+                [$dbName]
+            );
+
+            return !empty($rows);
+        }
+
+        return false;
     }
 }
