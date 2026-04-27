@@ -18,7 +18,6 @@ class Tenant extends BaseTenant implements TenantWithDatabase
         return [
             'id',
             'name',
-            'description',
             'plan_id',
             'created_at',
             'updated_at',
