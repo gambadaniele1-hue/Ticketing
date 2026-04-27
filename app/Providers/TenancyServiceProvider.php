@@ -26,24 +26,22 @@ class TenancyServiceProvider extends ServiceProvider
             Events\CreatingTenant::class => [],
             Events\TenantCreated::class => [
                 function (Events\TenantCreated $event): void {
-                    // Capiamo se il piano prevede un DB condiviso o dedicato
                     $isShared = !$this->shouldManageTenantDatabase($event->tenant->getAttribute('plan_id'));
 
-                    // Costruiamo la pipeline su misura
                     $jobs = $isShared ? [
-                            // Se è Shared: DB e tabelle esistono già. Lanciamo SOLO il seeder 
-                            // (il trait ibrido si assicurerà di iniettare il tenant_id corretto)
+                            // Se è Shared: usiamo i dati del .env, niente utenti custom, solo Seed
                         Jobs\SeedDatabase::class,
                     ] : [
-                            // Se è Dedicated: Facciamo l'infrastruttura completa
-                        Jobs\CreateDatabase::class,
-                        Jobs\MigrateDatabase::class,
-                        Jobs\SeedDatabase::class,
+                            // Se è Dedicated: Facciamo l'infrastruttura super-sicura
+                        Jobs\CreateDatabase::class,           // 1. Crea il database 'tenant_acme'
+                        \App\Jobs\CreateTenantMysqlUser::class, // 2. <-- IL NOSTRO NUOVO JOB! Crea 'user_acme'
+                        Jobs\MigrateDatabase::class,          // 3. Crea le tabelle
+                        Jobs\SeedDatabase::class,             // 4. Inserisce i dati base
                     ];
 
                     $listener = JobPipeline::make($jobs)->send(function (Events\TenantCreated $innerEvent) {
                         return $innerEvent->tenant;
-                    })->shouldBeQueued(false)->toListener();
+                    })->shouldBeQueued(true)->toListener();
 
                     $listener($event);
                 },
@@ -63,7 +61,7 @@ class TenancyServiceProvider extends ServiceProvider
                         Jobs\DeleteDatabase::class,
                     ])->send(function (Events\TenantDeleted $innerEvent) {
                         return $innerEvent->tenant;
-                    })->shouldBeQueued(false)->toListener();
+                    })->shouldBeQueued(true)->toListener();
 
                     $listener($event);
                 },
