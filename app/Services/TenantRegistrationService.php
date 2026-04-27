@@ -18,10 +18,16 @@ class TenantRegistrationService
 {
     public function register(array $data): Tenant
     {
-
+        $identity = $this->createGlobalIdentity($data);
     }
 
-    private function createGlobalIdentity(array $data) {}
+    private function createGlobalIdentity(array $data) : GlobalIdentity {
+        return Globalidentity::create([
+            "name" => $data["adminName"],
+            "email" => $data["adminEmail"],
+            "password" => Hash::make($data["adminPassword"]),
+        ]);
+    }
     
     private function createTenantRecord(array $data, $plan) {}
 
