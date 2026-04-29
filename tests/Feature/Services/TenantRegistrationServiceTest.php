@@ -215,4 +215,35 @@ class TenantRegistrationServiceTest extends TestCase
             'tenant_id' => 'acme', // Assicuriamoci che sia collegato al tenant giusto!
         ]);
     }
+
+    public function test_it_creates_a_membership_during_registration(): void
+    {
+        Event::fake([TenantCreated::class, TenantDeleted::class]);
+
+        $plan = Plan::create([
+            'name' => 'Piano Base Test',
+            'price_month' => 19.90,
+            'database_type' => 'shared',
+        ]);
+
+        $data = [
+            'companyName' => 'Acme Corp',
+            'subdomain' => 'acme', // Passiamo solo il sottodominio
+            'adminName' => 'Mario Rossi',
+            'adminEmail' => 'mario@acme.com',
+            'adminPassword' => 'password_super_sicura_123',
+            'planId' => $plan->id,
+        ];
+
+        // 2. Act
+        app(TenantRegistrationService::class)->register($data);
+
+        $identity = GlobalIdentity::where('email', 'mario@acme.com')->first();
+
+        $this->assertDatabaseHas('tenant_memberships', [
+            'global_user_id' => $identity->id,
+            'tenant_id' => 'acme', // Assicuriamoci che sia collegato al tenant giusto!
+            'state' => 'accepted'
+        ]);
+    }
 }

@@ -6,6 +6,7 @@ use App\Exceptions\DatabaseAlreadyExistsException;
 use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
+use App\Models\Global\TenantMembership;
 use Illuminate\Support\Str; // Ricorda di importarlo per le password casuali
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -36,8 +37,8 @@ class TenantRegistrationService
             // 4. Creiamo il dominio (ancora da fare)
             $this->createTenantDomain($tenant, $data['subdomain']);
 
-            // 5. Setup DB e Seed (ancora da fare)
-            //$this->setupTenantDatabase($tenant, $identity);
+            // 5. Colleghiamo l'identità al tenant (creando un record in tenant_memberships)
+            $this->linkIdentityToTenant($identity, $tenant);
 
             return $tenant; // Finito!
 
@@ -111,9 +112,10 @@ class TenantRegistrationService
 
     private function linkIdentityToTenant($identity, Tenant $tenant)
     {
+        $tenant->memberships()->create([
+            'global_user_id' => $identity->id,
+            'state' => 'accepted',
+        ]);
     }
 
-    private function setupTenantDatabase(Tenant $tenant, $identity)
-    {
-    }
 }
