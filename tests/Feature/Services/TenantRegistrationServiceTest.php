@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Stancl\JobPipeline\JobPipeline;
+use Stancl\Tenancy\Database\Models\Domain;
 use Stancl\Tenancy\Events\TenantCreated;
 use Stancl\Tenancy\Events\TenantDeleted;
 use Stancl\Tenancy\Jobs\CreateDatabase;
@@ -179,5 +180,39 @@ class TenantRegistrationServiceTest extends TestCase
                 SeedDatabase::class,
             ];
         });
+    }
+
+    public function test_it_creates_a_domain_during_registration(): void
+    {
+        // 1. Arrange
+        Event::fake([TenantCreated::class, TenantDeleted::class]);
+
+        $plan = Plan::create([
+            'name' => 'Piano Base Test',
+            'price_month' => 19.90,
+            'database_type' => 'shared',
+        ]);
+
+        $data = [
+            'companyName' => 'Acme Corp',
+            'subdomain' => 'acme', // Passiamo solo il sottodominio
+            'adminName' => 'Mario Rossi',
+            'adminEmail' => 'mario@acme.com',
+            'adminPassword' => 'password_super_sicura_123',
+            'planId' => $plan->id,
+        ];
+
+        // 2. Act
+        app(TenantRegistrationService::class)->register($data);
+
+        // 3. Assert
+        // Recuperiamo il dominio base esattamente come fa il Service
+        $baseDomain = config('tenancy.central_domains')[0] ?? env('APP_BASE_DOMAIN', 'localhost');
+        $expectedDomain = 'acme.' . $baseDomain;
+
+        $this->assertDatabaseHas('domains', [
+            'domain' => $expectedDomain,
+            'tenant_id' => 'acme', // Assicuriamoci che sia collegato al tenant giusto!
+        ]);
     }
 }

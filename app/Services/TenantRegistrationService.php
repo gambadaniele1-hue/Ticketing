@@ -9,6 +9,7 @@ use App\Models\Global\Tenant;
 use Illuminate\Support\Str; // Ricorda di importarlo per le password casuali
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Stancl\Tenancy\Database\Models\Domain;
 use Throwable;
 
 class TenantRegistrationService
@@ -33,7 +34,7 @@ class TenantRegistrationService
             $tenant = $this->createTenantRecord($data, $plan);
 
             // 4. Creiamo il dominio (ancora da fare)
-            //$this->createTenantDomain($tenant, $data['subdomain']);
+            $this->createTenantDomain($tenant, $data['subdomain']);
 
             // 5. Setup DB e Seed (ancora da fare)
             //$this->setupTenantDatabase($tenant, $identity);
@@ -101,6 +102,11 @@ class TenantRegistrationService
 
     private function createTenantDomain(Tenant $tenant, string $subdomain)
     {
+        $baseDomain = config('tenancy.central_domains')[0] ?? env('APP_CENTRAL_DOMAIN');
+
+        $tenant->domains()->create([
+            "domain" => $subdomain . '.' . $baseDomain,
+        ]);
     }
 
     private function linkIdentityToTenant($identity, Tenant $tenant)
