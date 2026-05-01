@@ -274,8 +274,6 @@ class TenantRegistrationServiceTest extends TestCase
 
         // Mettiamo TUTTO il test dentro un blocco try
         try {
-            config(['queue.default' => 'sync']);
-            Queue::setDefaultDriver('sync');
 
             // 2. Act
             $service = app(TenantRegistrationService::class);
