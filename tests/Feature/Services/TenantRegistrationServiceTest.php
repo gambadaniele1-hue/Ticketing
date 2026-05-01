@@ -7,10 +7,12 @@ use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
 use App\Services\TenantRegistrationService;
+use DB;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
+use Queue;
 use Stancl\JobPipeline\JobPipeline;
 use Stancl\Tenancy\Database\Models\Domain;
 use Stancl\Tenancy\Events\TenantCreated;
@@ -245,5 +247,65 @@ class TenantRegistrationServiceTest extends TestCase
             'tenant_id' => 'acme', // Assicuriamoci che sia collegato al tenant giusto!
             'state' => 'accepted'
         ]);
+    }
+
+    public function test_it_physically_creates_the_tenant_database_in_mysql(): void
+    {
+        $expectedDbName = 'tenant_starkphysical';
+
+        // 0. PULIZIA PREVENTIVA: Se un test di ieri si è bloccato e ha lasciato il DB, piallalo prima di iniziare.
+        DB::statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+
+        // 1. Arrange
+        $plan = Plan::create([
+            'name' => 'Piano Enterprise Fisico',
+            'price_month' => 99.90,
+            'database_type' => 'dedicated',
+        ]);
+
+        $data = [
+            'companyName' => 'Stark Physical DB',
+            'subdomain' => 'starkphysical',
+            'adminName' => 'Tony Stark',
+            'adminEmail' => 'tonyphysical@stark.com',
+            'adminPassword' => 'password123',
+            'planId' => $plan->id,
+        ];
+
+        // Mettiamo TUTTO il test dentro un blocco try
+        try {
+            config(['queue.default' => 'sync']);
+            Queue::setDefaultDriver('sync');
+
+            // 2. Act
+            $service = app(TenantRegistrationService::class);
+            $service->register($data);
+
+            // 3. Assert
+            $databaseExists = DB::select(
+                "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?",
+                [$expectedDbName]
+            );
+
+            $this->assertNotEmpty($databaseExists, "Errore: Il database fisico '{$expectedDbName}' non è stato creato su MySQL!");
+
+        } finally {
+            // 1. Usciamo forzatamente dal database del tenant!
+            if (tenancy()->initialized) {
+                tenancy()->end();
+            }
+
+            // 2. Ora siamo tornati nel DB centrale. Possiamo eliminare in sicurezza.
+            $tenant = Tenant::find('starkphysical');
+            if ($tenant) {
+                $tenant->delete();
+            }
+
+            // 3. Pulizia d'emergenza su MySQL
+            DB::statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+            DB::statement("DROP USER IF EXISTS 'usr_starkphysi'@'%'");
+            DB::statement("DROP USER IF EXISTS 'usr_starkphysi'@'127.0.0.1'");
+            DB::statement("DROP USER IF EXISTS 'usr_starkphysi'@'localhost'");
+        }
     }
 }

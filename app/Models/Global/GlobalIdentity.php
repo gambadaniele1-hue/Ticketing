@@ -29,4 +29,13 @@ class GlobalIdentity extends Model
     {
         return $this->hasMany(TenantMembership::class, 'global_user_id'); // Foreign key esplicita [cite: 59]
     }
+
+    /**
+     * Forza questo modello a usare SEMPRE e SOLO la connessione centrale.
+     * Impedisce il "Connection Bleed" quando siamo dentro un tenant.
+     */
+    public function getConnectionName()
+    {
+        return config('tenancy.database.central_connection');
+    }
 }

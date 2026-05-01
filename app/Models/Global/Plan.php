@@ -18,4 +18,13 @@ class Plan extends Model
     {
         return $this->hasMany(Tenant::class);
     }
+
+    /**
+     * Forza questo modello a usare SEMPRE e SOLO la connessione centrale.
+     * Impedisce il "Connection Bleed" quando siamo dentro un tenant.
+     */
+    public function getConnectionName()
+    {
+        return config('tenancy.database.central_connection');
+    }
 }
