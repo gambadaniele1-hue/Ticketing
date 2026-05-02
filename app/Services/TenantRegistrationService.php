@@ -7,61 +7,77 @@ use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
 use App\Models\Global\TenantMembership;
-use Illuminate\Support\Str; // Ricorda di importarlo per le password casuali
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB; // IMPORTANTE
+use Illuminate\Validation\ValidationException; // IMPORTANTE
 use Stancl\Tenancy\Database\Models\Domain;
-use Throwable;
 
 class TenantRegistrationService
 {
     public function register(array $data): Tenant
     {
-        $identity = null;
-        $tenant = null;
+        $plan = Plan::findOrFail($data['planId']);
 
-        try {
+        // --- 1. PRE-FLIGHT CHECKS (Il nostro scudo) ---
+        // Rimane fuori dalla transazione per non bloccare inutilmente il DB 
+        // mentre interroghiamo INFORMATION_SCHEMA
+        $this->runPreflightChecks($data['subdomain'], $plan);
+
+        // --- 2. TRANSAZIONE SUL DATABASE CENTRALE ---
+        // Se una qualsiasi cosa fallisce qui dentro, Laravel annulla le query precedenti in automatico.
+        return DB::transaction(function () use ($data, $plan) {
+
             // 1. Creiamo l'identità
             $identity = $this->createGlobalIdentity($data);
 
-            // 2. Controllo duplicati
-            if (Tenant::where('id', $data['subdomain'])->exists()) {
+            // 2. Controllo duplicati (con blocco in scrittura per sicurezza estrema)
+            if (Tenant::where('id', $data['subdomain'])->lockForUpdate()->exists()) {
                 throw new DatabaseAlreadyExistsException('Il subdomain "' . $data['subdomain'] . '" è già in uso.');
             }
-
-            $plan = Plan::findOrFail($data['planId']);
 
             // 3. Creiamo il record del tenant (e generiamo i dati DB)
             $tenant = $this->createTenantRecord($data, $plan);
 
-            // 4. Creiamo il dominio (ancora da fare)
+            // 4. Creiamo il dominio
             $this->createTenantDomain($tenant, $data['subdomain']);
 
-            // 5. Colleghiamo l'identità al tenant (creando un record in tenant_memberships)
+            // 5. Colleghiamo l'identità al tenant
             $this->linkIdentityToTenant($identity, $tenant);
 
             return $tenant; // Finito!
+        });
+    }
 
-        } catch (Throwable $e) {
-            // ROLLBACK: Puliamo tutto quello che avevamo creato prima dell'errore
-
-            // Se il tenant era stato creato, lo cancelliamo 
-            // (Il pacchetto Tenancy, se configurato, cancellerà anche il DB fisico!)
-            if (isset($tenant)) {
-                $tenant->delete();
-            }
-
-            // Se l'identità era stata creata, la cancelliamo
-            if (isset($identity)) {
-                $identity->forceDelete(); // Usiamo forceDelete se hai il SoftDeletes
-            }
-
-            Log::error('Errore registrazione tenant: ' . $e->getMessage(), [
-                'subdomain' => $data['subdomain'],
-                'trace' => $e->getTraceAsString()
+    /**
+     * Esegue i controlli infrastrutturali per prevenire fallimenti nei Job in coda.
+     */
+    private function runPreflightChecks(string $subdomain, Plan $plan): void
+    {
+        // 1. Controllo Dominio: Stancl/Tenancy usa una tabella separata 'domains'. 
+        $domainExists = DB::table('domains')->where('domain', $subdomain)->exists();
+        if ($domainExists) {
+            throw ValidationException::withMessages([
+                'subdomain' => 'Questo sottodominio è già in uso.'
             ]);
+        }
 
-            throw $e;
+        // 2. Controlli Infrastrutturali (SOLO per piani Dedicati)
+        if ($plan->database_type === 'dedicated') {
+            $dbName = 'tenant_' . $subdomain;
+
+            // A. Esiste già il database fisico su MySQL?
+            $databaseExists = DB::select(
+                "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?",
+                [$dbName]
+            );
+
+            if (!empty($databaseExists)) {
+                throw ValidationException::withMessages([
+                    'subdomain' => "Errore di sistema: Il database fisico '{$dbName}' è già presente sul server. Scegli un altro nome o contatta l'assistenza."
+                ]);
+            }
         }
     }
 
@@ -78,10 +94,10 @@ class TenantRegistrationService
     {
         $isShared = $plan->database_type === 'shared';
         $subdomain = $data['subdomain'];
+        $randomSuffix = strtolower(Str::random(4));
 
         $dbName = $isShared ? env('SHARED_DB_NAME', 'ticketing_shared') : 'tenant_' . $subdomain;
 
-        // Prepariamo l'array base (Colonne fisiche + nome DB)
         $tenantData = [
             'id' => $subdomain,
             'name' => $data['companyName'],
@@ -89,12 +105,8 @@ class TenantRegistrationService
             'tenancy_db_name' => $dbName,
         ];
 
-        // Se è DEDICATO, generiamo e aggiungiamo le credenziali all'array 
-        // (che finiranno magicamente nel JSON data).
-        // Se è SHARED, non le aggiungiamo, così il pacchetto userà quelle del .env!
         if (!$isShared) {
-            // usiamo una substringa per evitare errori di lunghezza con MySQL
-            $tenantData['tenancy_db_username'] = 'usr_' . substr($subdomain, 0, 10);
+            $tenantData['tenancy_db_username'] = 'usr_' . substr($subdomain, 0, 10) . "_" . $randomSuffix;
             $tenantData['tenancy_db_password'] = Str::password(16, true, true, false);
         }
 
@@ -117,5 +129,4 @@ class TenantRegistrationService
             'state' => 'accepted',
         ]);
     }
-
 }

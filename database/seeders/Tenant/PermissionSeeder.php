@@ -4,11 +4,15 @@ namespace Database\Seeders\Tenant;
 
 use Illuminate\Database\Seeder;
 use App\Models\Tenant\Permission;
+use Illuminate\Support\Facades\DB;
 
 class PermissionSeeder extends Seeder
 {
     public function run(): void
     {
+        $isShared = tenant('tenancy_db_name') === env('SHARED_DB_NAME', 'ticketing_shared');
+        $tenantId = tenant('id');
+
         $permissions = [
             // Tickets
             ['slug' => 'tickets.view', 'description' => 'Visualizzare i ticket'],
@@ -25,7 +29,12 @@ class PermissionSeeder extends Seeder
         ];
 
         foreach ($permissions as $permission) {
-            Permission::firstOrCreate(['slug' => $permission['slug']], $permission);
+            $search = ['slug' => $permission['slug']];
+            if ($isShared) {
+                $search['tenant_id'] = $tenantId;
+            }
+
+            Permission::firstOrCreate($search, $permission);
         }
     }
 }

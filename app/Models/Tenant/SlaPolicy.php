@@ -15,5 +15,6 @@ class SlaPolicy extends Model
         'priority',
         'response_time_hours',
         'resolution_time_hours',
+        'tenant_id',
     ];
 }

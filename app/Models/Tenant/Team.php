@@ -8,7 +8,10 @@ use App\Traits\BelongsToTenantHybrid;
 class Team extends Model
 {
     use BelongsToTenantHybrid;
-    protected $fillable = ['name'];
+    protected $fillable = [
+        'name',
+        'tenant_id',
+    ];
 
     public function members(): BelongsToMany
     {

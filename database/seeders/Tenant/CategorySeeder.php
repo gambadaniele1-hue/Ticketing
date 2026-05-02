@@ -9,8 +9,21 @@ class CategorySeeder extends Seeder
 {
     public function run(): void
     {
-        Category::firstOrCreate(['name' => 'Supporto Tecnico']);
-        Category::firstOrCreate(['name' => 'Fatturazione e Commerciale']);
-        Category::firstOrCreate(['name' => 'Richiesta Informazioni']);
+        $isShared = tenant('tenancy_db_name') === env('SHARED_DB_NAME', 'ticketing_shared');
+        $tenantId = tenant('id');
+
+        $categories = ['Supporto Tecnico', 'Fatturazione e Commerciale', 'Richiesta Informazioni'];
+
+        foreach ($categories as $name) {
+            $data = ['name' => $name];
+
+            if ($isShared) {
+                $data['tenant_id'] = $tenantId;
+            }
+
+            // Dato che qui "name" e "tenant_id" sono entrambi sia parametri di ricerca 
+            // che di inserimento, basta un solo array in firstOrCreate()
+            Category::firstOrCreate($data);
+        }
     }
 }
