@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\Global\Plan;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -24,17 +25,28 @@ class TenancyServiceProvider extends ServiceProvider
                 // Tenant events
             Events\CreatingTenant::class => [],
             Events\TenantCreated::class => [
-                JobPipeline::make([
-                    Jobs\CreateDatabase::class,
-                    Jobs\MigrateDatabase::class,
-                    Jobs\SeedDatabase::class,
+                function (Events\TenantCreated $event): void {
+                    $isShared = !$this->shouldManageTenantDatabase($event->tenant->getAttribute('plan_id'));
 
-                    // Your own jobs to prepare the tenant.
-                    // Provision API keys, create S3 buckets, anything you want!
+                    $jobs = $isShared ? [
+                            // Se è Shared: usiamo i dati del .env, niente utenti custom, ma creiamo l'admin tenant
+                        Jobs\SeedDatabase::class,
+                        \App\Jobs\CreateTenantAdminUser::class,
+                    ] : [
+                            // Se è Dedicated: Facciamo l'infrastruttura super-sicura
+                        Jobs\CreateDatabase::class,           // 1. Crea il database 'tenant_acme'
+                        \App\Jobs\CreateTenantMysqlUser::class, // 2. <-- IL NOSTRO NUOVO JOB! Crea 'user_acme'
+                        Jobs\MigrateDatabase::class,          // 3. Crea le tabelle
+                        Jobs\SeedDatabase::class,             // 4. Inserisce i dati base
+                        \App\Jobs\CreateTenantAdminUser::class,
+                    ];
 
-                ])->send(function (Events\TenantCreated $event) {
-                    return $event->tenant;
-                })->shouldBeQueued(false), // `false` by default, but you probably want to make this `true` for production.
+                    $listener = JobPipeline::make($jobs)->send(function (Events\TenantCreated $innerEvent) {
+                        return $innerEvent->tenant;
+                    })->shouldBeQueued(true)->toListener();
+
+                    $listener($event);
+                },
             ],
             Events\SavingTenant::class => [],
             Events\TenantSaved::class => [],
@@ -42,11 +54,19 @@ class TenancyServiceProvider extends ServiceProvider
             Events\TenantUpdated::class => [],
             Events\DeletingTenant::class => [],
             Events\TenantDeleted::class => [
-                JobPipeline::make([
-                    Jobs\DeleteDatabase::class,
-                ])->send(function (Events\TenantDeleted $event) {
-                    return $event->tenant;
-                })->shouldBeQueued(false), // `false` by default, but you probably want to make this `true` for production.
+                function (Events\TenantDeleted $event): void {
+                    if (!$this->shouldManageTenantDatabase($event->tenant->getAttribute('plan_id'))) {
+                        return;
+                    }
+
+                    $listener = JobPipeline::make([
+                        Jobs\DeleteDatabase::class,
+                    ])->send(function (Events\TenantDeleted $innerEvent) {
+                        return $innerEvent->tenant;
+                    })->shouldBeQueued(true)->toListener();
+
+                    $listener($event);
+                },
             ],
 
                 // Domain events
@@ -144,5 +164,14 @@ class TenancyServiceProvider extends ServiceProvider
         foreach (array_reverse($tenancyMiddleware) as $middleware) {
             $this->app[\Illuminate\Contracts\Http\Kernel::class]->prependToMiddlewarePriority($middleware);
         }
+    }
+
+    private function shouldManageTenantDatabase(?int $planId): bool
+    {
+        if (!$planId) {
+            return true;
+        }
+
+        return Plan::query()->whereKey($planId)->value('database_type') !== 'shared';
     }
 }

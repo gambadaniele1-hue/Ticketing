@@ -14,6 +14,7 @@ class User extends Model
     protected $fillable = [
         'global_user_id',
         'role_id',
+        'tenant_id'
     ];
 
     public function role(): BelongsTo

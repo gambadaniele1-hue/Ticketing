@@ -8,7 +8,7 @@ use App\Traits\BelongsToTenantHybrid;
 class Message extends Model
 {
     use BelongsToTenantHybrid;
-    protected $fillable = ['ticket_id', 'user_id', 'body', 'is_internal', 'macro_id'];
+    protected $fillable = ['ticket_id', 'user_id', 'body', 'is_internal', 'macro_id', 'tenant_id'];
 
     public function ticket(): BelongsTo
     {

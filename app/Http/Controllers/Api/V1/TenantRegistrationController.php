@@ -21,12 +21,23 @@ class TenantRegistrationController extends Controller
         // Deleghiamo al service passando i dati validati
         $tenant = $this->registrationService->register($request->validated());
 
+        $domain = $tenant->domains->first()->domain;
+
         return response()->json([
-            'message' => 'Tenant creato con successo.',
-            'tenant' => [
-                'id' => $tenant->id,
-                'name' => $tenant->name,
-                'domain' => $tenant->domains->first()->domain
+            'message' => 'Tenant creato con successo. Benvenuto a bordo!',
+            'data' => [
+                'tenant' => [
+                    'id' => $tenant->id,
+                    'name' => $tenant->name,
+                    // Il dominio per intero
+                    'domain' => $domain,
+                    // Un URL già pronto che il frontend può usare per il bottone "Vai al tuo spazio"
+                    'login_url' => 'http://' . $domain . '/login',
+                    // Utile per far vedere un riepilogo "Abbiamo inviato un'email a..."
+                    'admin_email' => $request->adminEmail,
+                    // Data di creazione formattata
+                    'created_at' => $tenant->created_at->toIso8601String(),
+                ]
             ]
         ], 201); // 201 Created come da standard
     }

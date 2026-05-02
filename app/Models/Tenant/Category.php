@@ -10,7 +10,7 @@ use App\Traits\BelongsToTenantHybrid;
 class Category extends Model
 {
     use BelongsToTenantHybrid;
-    protected $fillable = ['name', 'parent_category_id'];
+    protected $fillable = ['name', 'parent_category_id', 'tenant_id'];
 
     public function parent(): BelongsTo
     {

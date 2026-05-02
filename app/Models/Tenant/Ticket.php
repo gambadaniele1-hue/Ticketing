@@ -19,7 +19,8 @@ class Ticket extends Model
         'user_id_resolver',
         'team_id',
         'category_id',
-        'closed_at'
+        'closed_at',
+        'tenant_id'
     ];
 
     protected $casts = ['closed_at' => 'datetime'];

@@ -8,7 +8,3 @@ use App\Http\Controllers\Api\V1\TenantRegistrationController;
 
 Route::post('/register', [TenantRegistrationController::class, 'store']);
 
-// Esempio di rotta protetta futura
-// Route::middleware('auth:sanctum')->group(function () {
-//     Route::get('/me', [UserController::class, 'me']);
-// });

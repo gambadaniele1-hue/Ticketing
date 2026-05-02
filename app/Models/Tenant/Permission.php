@@ -12,6 +12,7 @@ class Permission extends Model
     protected $fillable = [
         'slug',
         'description',
+        'tenant_id',
     ];
 
     public function roles(): BelongsToMany

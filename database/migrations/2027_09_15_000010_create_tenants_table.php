@@ -18,12 +18,11 @@ class CreateTenantsTable extends Migration
         Schema::create('tenants', function (Blueprint $table) {
             $table->string('id')->primary(); // id [cite: 208]
             $table->string('name'); // name [cite: 209]
-            $table->text('description')->nullable(); // description [cite: 210]
-            $table->string('db_name')->nullable(); // db_name [cite: 211]
-            $table->string('db_password')->nullable(); // db_password [cite: 212]
             $table->foreignId('plan_id')->constrained('plans')->cascadeOnDelete(); // plan_id [cite: 213]
+            
+            $table->json('data')->nullable(); // Qui finiranno db_name, user, password ecc.
+
             $table->timestamps();
-            $table->json('data')->nullable(); // Richiesto da stancl/tenancy
         });
     }
 
