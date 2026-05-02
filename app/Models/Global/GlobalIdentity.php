@@ -38,4 +38,9 @@ class GlobalIdentity extends Model
     {
         return config('tenancy.database.central_connection');
     }
+
+    public function refreshTokens()
+    {
+        return $this->hasMany(RefreshToken::class, 'global_identity_id');
+    }
 }

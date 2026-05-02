@@ -35,4 +35,7 @@ return [
         ],
     ],
 
+    'jwt' => [
+        'secret' => env('JWT_SECRET', 'default_secret'),
+    ],
 ];
