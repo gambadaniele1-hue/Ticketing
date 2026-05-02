@@ -29,14 +29,16 @@ class TenancyServiceProvider extends ServiceProvider
                     $isShared = !$this->shouldManageTenantDatabase($event->tenant->getAttribute('plan_id'));
 
                     $jobs = $isShared ? [
-                            // Se è Shared: usiamo i dati del .env, niente utenti custom, solo Seed
+                            // Se è Shared: usiamo i dati del .env, niente utenti custom, ma creiamo l'admin tenant
                         Jobs\SeedDatabase::class,
+                        \App\Jobs\CreateTenantAdminUser::class,
                     ] : [
                             // Se è Dedicated: Facciamo l'infrastruttura super-sicura
                         Jobs\CreateDatabase::class,           // 1. Crea il database 'tenant_acme'
                         \App\Jobs\CreateTenantMysqlUser::class, // 2. <-- IL NOSTRO NUOVO JOB! Crea 'user_acme'
                         Jobs\MigrateDatabase::class,          // 3. Crea le tabelle
                         Jobs\SeedDatabase::class,             // 4. Inserisce i dati base
+                        \App\Jobs\CreateTenantAdminUser::class,
                     ];
 
                     $listener = JobPipeline::make($jobs)->send(function (Events\TenantCreated $innerEvent) {

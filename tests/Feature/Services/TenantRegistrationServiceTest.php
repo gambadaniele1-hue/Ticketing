@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Services;
 
+use App\Jobs\CreateTenantAdminUser;
 use App\Jobs\CreateTenantMysqlUser;
 use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
@@ -12,9 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
-use Queue;
 use Stancl\JobPipeline\JobPipeline;
-use Stancl\Tenancy\Database\Models\Domain;
 use Stancl\Tenancy\Events\TenantCreated;
 use Stancl\Tenancy\Events\TenantDeleted;
 use Stancl\Tenancy\Jobs\CreateDatabase;
@@ -26,26 +25,39 @@ class TenantRegistrationServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_it_creates_a_global_identity_during_registration(): void
+    private function createPlan(string $databaseType = 'shared'): Plan
     {
-        Event::fake([TenantCreated::class, TenantDeleted::class]);
-
-        $plan = Plan::create([
-            'name' => 'Piano Base Test',
-            'price_month' => 19.90,
-            'database_type' => 'shared',
+        return Plan::create([
+            'name' => $databaseType === 'shared' ? 'Piano Base Test' : 'Piano Enterprise Test',
+            'price_month' => $databaseType === 'shared' ? 19.90 : 99.90,
+            'database_type' => $databaseType,
         ]);
+    }
 
-        $data = [
+    private function registrationData(array $overrides = []): array
+    {
+        return array_merge([
             'companyName' => 'Acme Corp',
             'subdomain' => 'acme',
             'adminName' => 'Mario Rossi',
             'adminEmail' => 'mario@acme.com',
             'adminPassword' => 'password_super_sicura_123',
-            'planId' => $plan->id,
-        ];
+        ], $overrides);
+    }
 
+    private function registerTenant(array $data): void
+    {
         app(TenantRegistrationService::class)->register($data);
+    }
+
+    public function test_it_creates_a_global_identity_during_registration(): void
+    {
+        Event::fake([TenantCreated::class, TenantDeleted::class]);
+
+        $plan = $this->createPlan('shared');
+        $data = $this->registrationData(['planId' => $plan->id]);
+
+        $this->registerTenant($data);
 
         $this->assertDatabaseHas('global_identities', [
             'name' => 'Mario Rossi',
@@ -62,22 +74,12 @@ class TenantRegistrationServiceTest extends TestCase
     {
         Event::fake([TenantCreated::class, TenantDeleted::class]);
 
-        $plan = Plan::create([
-            'name' => 'Piano Base Test',
-            'price_month' => 19.90,
-            'database_type' => 'shared',
-        ]);
+        $plan = $this->createPlan('shared');
 
-        $data = [
-            'companyName' => 'Acme Corp',
-            'subdomain' => 'acme',
-            'adminName' => 'Mario Rossi',
-            'adminEmail' => 'mario@acme.com',
+        $this->registerTenant($this->registrationData([
             'adminPassword' => 'password123',
             'planId' => $plan->id,
-        ];
-
-        app(TenantRegistrationService::class)->register($data);
+        ]));
 
         $this->assertDatabaseHas('tenants', [
             'id' => 'acme',
@@ -96,22 +98,16 @@ class TenantRegistrationServiceTest extends TestCase
     {
         Event::fake([TenantCreated::class, TenantDeleted::class]);
 
-        $plan = Plan::create([
-            'name' => 'Piano Enterprise Test',
-            'price_month' => 99.90,
-            'database_type' => 'dedicated',
-        ]);
+        $plan = $this->createPlan('dedicated');
 
-        $data = [
+        $this->registerTenant($this->registrationData([
             'companyName' => 'Stark Industries',
             'subdomain' => 'starkjobs',
             'adminName' => 'Tony Stark',
             'adminEmail' => 'tony@stark.com',
             'adminPassword' => 'password123',
             'planId' => $plan->id,
-        ];
-
-        app(TenantRegistrationService::class)->register($data);
+        ]));
 
         $this->assertDatabaseHas('tenants', [
             'id' => 'starkjobs',
@@ -127,29 +123,24 @@ class TenantRegistrationServiceTest extends TestCase
         $this->assertTrue(strlen($tenant->tenancy_db_password) >= 16);
     }
 
-    public function test_shared_plan_dispatches_only_seed_job(): void
+    public function test_shared_plan_dispatches_seed_and_admin_jobs(): void
     {
         Bus::fake();
 
-        $plan = Plan::create([
-            'name' => 'Piano Base Test',
-            'price_month' => 19.90,
-            'database_type' => 'shared',
-        ]);
+        $plan = $this->createPlan('shared');
 
-        $data = [
-            'companyName' => 'Acme Corp',
+        $this->registerTenant($this->registrationData([
             'subdomain' => 'acmejobs',
             'adminName' => 'Mario',
-            'adminEmail' => 'mario@acme.com',
             'adminPassword' => 'password123',
             'planId' => $plan->id,
-        ];
-
-        app(TenantRegistrationService::class)->register($data);
+        ]));
 
         Bus::assertDispatched(JobPipeline::class, function (JobPipeline $pipeline): bool {
-            return $pipeline->jobs === [SeedDatabase::class];
+            return $pipeline->jobs === [
+                SeedDatabase::class,
+                CreateTenantAdminUser::class,
+            ];
         });
     }
 
@@ -157,22 +148,16 @@ class TenantRegistrationServiceTest extends TestCase
     {
         Bus::fake();
 
-        $plan = Plan::create([
-            'name' => 'Piano Enterprise Test',
-            'price_month' => 99.90,
-            'database_type' => 'dedicated',
-        ]);
+        $plan = $this->createPlan('dedicated');
 
-        $data = [
+        $this->registerTenant($this->registrationData([
             'companyName' => 'Stark Industries',
             'subdomain' => 'starkjobs-dispatch',
             'adminName' => 'Tony Stark',
             'adminEmail' => 'tony@stark.com',
             'adminPassword' => 'password123',
             'planId' => $plan->id,
-        ];
-
-        app(TenantRegistrationService::class)->register($data);
+        ]));
 
         Bus::assertDispatched(JobPipeline::class, function (JobPipeline $pipeline): bool {
             return $pipeline->jobs === [
@@ -180,71 +165,33 @@ class TenantRegistrationServiceTest extends TestCase
                 CreateTenantMysqlUser::class,
                 MigrateDatabase::class,
                 SeedDatabase::class,
+                CreateTenantAdminUser::class, // Sempre per ultimo!
             ];
         });
     }
 
-    public function test_it_creates_a_domain_during_registration(): void
+    public function test_it_creates_domain_and_membership_during_registration(): void
     {
-        // 1. Arrange
         Event::fake([TenantCreated::class, TenantDeleted::class]);
 
-        $plan = Plan::create([
-            'name' => 'Piano Base Test',
-            'price_month' => 19.90,
-            'database_type' => 'shared',
-        ]);
+        $plan = $this->createPlan('shared');
+        $data = $this->registrationData(['planId' => $plan->id]);
 
-        $data = [
-            'companyName' => 'Acme Corp',
-            'subdomain' => 'acme', // Passiamo solo il sottodominio
-            'adminName' => 'Mario Rossi',
-            'adminEmail' => 'mario@acme.com',
-            'adminPassword' => 'password_super_sicura_123',
-            'planId' => $plan->id,
-        ];
+        $this->registerTenant($data);
 
-        // 2. Act
-        app(TenantRegistrationService::class)->register($data);
-
-        // 3. Assert
-        // Recuperiamo il dominio base esattamente come fa il Service
         $baseDomain = config('tenancy.central_domains')[0] ?? env('APP_BASE_DOMAIN', 'localhost');
         $expectedDomain = 'acme.' . $baseDomain;
 
         $this->assertDatabaseHas('domains', [
             'domain' => $expectedDomain,
-            'tenant_id' => 'acme', // Assicuriamoci che sia collegato al tenant giusto!
+            'tenant_id' => 'acme',
         ]);
-    }
-
-    public function test_it_creates_a_membership_during_registration(): void
-    {
-        Event::fake([TenantCreated::class, TenantDeleted::class]);
-
-        $plan = Plan::create([
-            'name' => 'Piano Base Test',
-            'price_month' => 19.90,
-            'database_type' => 'shared',
-        ]);
-
-        $data = [
-            'companyName' => 'Acme Corp',
-            'subdomain' => 'acme', // Passiamo solo il sottodominio
-            'adminName' => 'Mario Rossi',
-            'adminEmail' => 'mario@acme.com',
-            'adminPassword' => 'password_super_sicura_123',
-            'planId' => $plan->id,
-        ];
-
-        // 2. Act
-        app(TenantRegistrationService::class)->register($data);
 
         $identity = GlobalIdentity::where('email', 'mario@acme.com')->first();
 
         $this->assertDatabaseHas('tenant_memberships', [
             'global_user_id' => $identity->id,
-            'tenant_id' => 'acme', // Assicuriamoci che sia collegato al tenant giusto!
+            'tenant_id' => 'acme',
             'state' => 'accepted'
         ]);
     }
@@ -257,11 +204,7 @@ class TenantRegistrationServiceTest extends TestCase
         DB::statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
 
         // 1. Arrange
-        $plan = Plan::create([
-            'name' => 'Piano Enterprise Fisico',
-            'price_month' => 99.90,
-            'database_type' => 'dedicated',
-        ]);
+        $plan = $this->createPlan('dedicated');
 
         $data = [
             'companyName' => 'Stark Physical DB',
