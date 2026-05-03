@@ -9,11 +9,14 @@ use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
 use App\Services\TenantRegistrationService;
 use DB;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Stancl\JobPipeline\JobPipeline;
+use Stancl\Tenancy\Events\DatabaseCreated;
+use Stancl\Tenancy\Events\DatabaseSeeded;
 use Stancl\Tenancy\Events\TenantCreated;
 use Stancl\Tenancy\Events\TenantDeleted;
 use Stancl\Tenancy\Jobs\CreateDatabase;
@@ -23,7 +26,7 @@ use Tests\TestCase;
 
 class TenantRegistrationServiceTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTruncation;
 
     private function createPlan(string $databaseType = 'shared'): Plan
     {
@@ -201,7 +204,7 @@ class TenantRegistrationServiceTest extends TestCase
         $expectedDbName = 'tenant_starkphysical';
 
         // 0. PULIZIA PREVENTIVA: Se un test di ieri si è bloccato e ha lasciato il DB, piallalo prima di iniziare.
-        DB::statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
 
         // 1. Arrange
         $plan = $this->createPlan('dedicated');
@@ -243,10 +246,175 @@ class TenantRegistrationServiceTest extends TestCase
             }
 
             // 3. Pulizia d'emergenza su MySQL
-            DB::statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
-            DB::statement("DROP USER IF EXISTS 'usr_starkphysi'@'%'");
-            DB::statement("DROP USER IF EXISTS 'usr_starkphysi'@'127.0.0.1'");
-            DB::statement("DROP USER IF EXISTS 'usr_starkphysi'@'localhost'");
+            DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+            DB::connection('mysql')->statement("DROP USER IF EXISTS 'usr_starkphysi'@'%'");
         }
+    }
+
+    public function test_it_rolls_back_data_if_dedicated_registration_fails(): void
+    {
+        // 1. Arrange
+        $plan = $this->createPlan('dedicated');
+        $expectedDbName = 'tenant_faildomain';
+
+        $data = [
+            'companyName' => 'Fail Corp',
+            'subdomain' => 'faildomain',
+            'adminName' => 'Mario Fail',
+            'adminEmail' => 'mario@fail.com',
+            'adminPassword' => 'password123',
+            'planId' => $plan->id,
+        ];
+
+        // Pulizia preventiva
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+
+        // TRUCCO: Ascoltiamo l'evento di creazione del Tenant. Non appena Laravel prova 
+        // a lanciare i Job per creare il database fisico, noi sganciamo una bomba (Eccezione).
+        Event::listen(TenantCreated::class, function () {
+            throw new \Exception("Simulazione di un errore di sistema critico!");
+        });
+
+        // 2. Act
+        try {
+            $service = app(TenantRegistrationService::class);
+            $service->register($data);
+
+            // Se arriviamo a questa riga, significa che l'eccezione non è partita. Il test deve fallire!
+            $this->fail('Il test avrebbe dovuto lanciare una eccezione e fermarsi prima.');
+
+        } catch (\Exception $e) {
+            // Verifichiamo che sia esattamente il nostro errore simulato
+            $this->assertEquals("Simulazione di un errore di sistema critico!", $e->getMessage());
+        }
+
+        // 3. Assert (Il vero test del Rollback)
+
+        // A. L'identità globale creata all'inizio DEVE essere stata eliminata dal rollback manuale
+        $this->assertDatabaseMissing('global_identities', [
+            'email' => 'mario@fail.com'
+        ]);
+
+        // B. Il record del tenant DEVE essere stato eliminato
+        $this->assertDatabaseMissing('tenants', [
+            'id' => 'faildomain'
+        ]);
+
+        // C. Nessun database fisico deve essere rimasto in giro
+        $databaseExists = DB::select(
+            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?",
+            [$expectedDbName]
+        );
+        $this->assertEmpty($databaseExists, "Errore: Il database fisico non è stato ripulito!");
+
+        // 4. Pulizia finale per sicurezza
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+        DB::connection('mysql')->statement("DROP USER IF EXISTS 'usr_faildoma'@'%'");
+    }
+
+    public function test_it_rolls_back_everything_if_dedicated_seeding_fails(): void
+    {
+        $plan = $this->createPlan('dedicated');
+        $expectedDbName = 'tenant_crashdomain';
+
+        $data = [
+            'companyName' => 'Crash Corp',
+            'subdomain' => 'crashdomain',
+            'adminName' => 'Mario Crash',
+            'adminEmail' => 'mario@crash.com',
+            'adminPassword' => 'password123',
+            'planId' => $plan->id,
+        ];
+
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+
+        // TRUCCO AVANZATO: Intercettiamo il Job 'SeedDatabase'. 
+        // Lasciamo che il sistema crei il DB e le tabelle, ma quando arriva il momento di seedare, facciamo esplodere tutto.
+        Event::listen(DatabaseSeeded::class, function () {
+            throw new \Exception("Errore critico durante il seeding!");
+        });
+
+        try {
+            $service = app(TenantRegistrationService::class);
+            $service->register($data);
+
+            $this->fail('Il test avrebbe dovuto lanciare una eccezione.');
+        } catch (\Exception $e) {
+            $this->assertEquals("Errore critico durante il seeding!", $e->getMessage());
+        }
+
+        // --- VERIFICHE DEL ROLLBACK MANUALE ---
+
+        // 0. TORNAMO A CASA: Usciamo forzatamente dal database del tenant.
+        // Siccome il processo è crashato a metà, Laravel è rimasto connesso al DB sbagliato!
+        if (tenancy()->initialized) {
+            tenancy()->end();
+        }
+
+        // 1. Dati centrali eliminati
+        $this->assertDatabaseMissing('global_identities', ['email' => 'mario@crash.com']);
+        $this->assertDatabaseMissing('tenants', ['id' => 'crashdomain']);
+
+        // 2. Database fisico eliminato
+        // ATTENZIONE: Questo passa solo se in config/tenancy.php l'evento TenantDeleted 
+        // è mappato al Job DeleteDatabase::class.
+        $databaseExists = DB::select(
+            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?",
+            [$expectedDbName]
+        );
+        $this->assertEmpty($databaseExists, "Errore: Il database fisico '{$expectedDbName}' è stato lasciato orfano!");
+
+        // Pulizia di sicurezza
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+        DB::connection('mysql')->statement("DROP USER IF EXISTS 'usr_crashdom'@'%'");
+    }
+
+    public function test_it_rolls_back_data_if_shared_registration_fails(): void
+    {
+        $plan = $this->createPlan('shared');
+
+        $data = [
+            'companyName' => 'Shared Fail Corp',
+            'subdomain' => 'sharedfail',
+            'adminName' => 'Luigi Fail',
+            'adminEmail' => 'luigi@sharedfail.com',
+            'adminPassword' => 'password123',
+            'planId' => $plan->id,
+        ];
+
+        // Qui facciamo fallire subito l'evento di creazione per testare la transazione di Laravel
+        Event::listen(DatabaseSeeded::class, function () {
+            throw new \Exception("Errore simulato su piano shared!");
+        });
+
+        try {
+            $service = app(TenantRegistrationService::class);
+            $service->register($data);
+
+            $this->fail('Il test avrebbe dovuto lanciare una eccezione.');
+        } catch (\Exception $e) {
+            $this->assertEquals("Errore simulato su piano shared!", $e->getMessage());
+        }
+
+        // --- VERIFICHE DELLA TRANSAZIONE ---
+
+        // 0. TORNAMO A CASA: Sganciamoci dal DB del tenant
+        if (function_exists('tenancy') && tenancy()->initialized) {
+            tenancy()->end();
+        }
+
+        // La DB::transaction() avrebbe dovuto annullare tutto in automatico!
+        // 1. Aggiungiamo 'mysql' per forzare la lettura sul database centrale
+        $this->assertDatabaseMissing('global_identities', [
+            'email' => 'luigi@sharedfail.com'
+        ], 'mysql');
+
+        $this->assertDatabaseMissing('tenants', [
+            'id' => 'sharedfail'
+        ], 'mysql');
+
+        $this->assertDatabaseMissing('domains', [
+            'domain' => 'sharedfail.localhost' // O il dominio base che usi
+        ], 'mysql');
     }
 }

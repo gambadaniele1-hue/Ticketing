@@ -7,12 +7,13 @@ use App\Services\JwtService;
 use Firebase\JWT\ExpiredException;
 use Firebase\JWT\SignatureInvalidException;
 use Firebase\JWT\JWT;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class JwtServiceTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTruncation;
 
     protected JwtService $jwtService;
     protected GlobalIdentity $user;
@@ -22,7 +23,7 @@ class JwtServiceTest extends TestCase
         parent::setUp();
 
         // Inizializziamo il service
-        $this->jwtService = new JwtService();
+        $this->jwtService = app(JwtService::class);
 
         // Creiamo un utente fittizio nel database centrale per i test
         $this->user = GlobalIdentity::create([
