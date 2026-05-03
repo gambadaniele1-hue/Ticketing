@@ -44,7 +44,7 @@ class JwtService
         $payload = [
             'iss' => config('app.url'),
             'iat' => time(),
-            'exp' => time() + (60 * 60 * 2),     // Scade tra 2 ore
+            'exp' => time() + (60 * 60),     // Scade tra 1 ora
             'type' => 'access',
             'sub' => $user->id,
             'tenant_id' => $tenantId,
@@ -72,10 +72,10 @@ class JwtService
         // Genera una stringa crittograficamente sicura di 64 caratteri
         $token = Str::random(64);
 
-        // Salva il token nel DB associato a questo utente
+        // Salva solo l'hash del token nel DB associato a questo utente
         $user->refreshTokens()->create([
-            'token' => $token,
-            'expires_at' => now()->addDays(30), // Il refresh token dura 30 giorni
+            'token' => hash('sha256', $token),
+            'expires_at' => now()->addDays(7), // Il refresh token dura 7 giorni
             'revoked' => false,
         ]);
 

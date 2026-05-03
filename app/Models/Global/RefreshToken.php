@@ -10,6 +10,7 @@ class RefreshToken extends Model
 {
     use HasFactory;
 
+    protected $connection = 'mysql';
     protected $fillable = [
         'global_identity_id',
         'token',

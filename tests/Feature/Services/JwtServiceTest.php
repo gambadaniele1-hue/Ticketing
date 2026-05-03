@@ -107,7 +107,7 @@ class JwtServiceTest extends TestCase
         // 2. Controlla che sia stata salvata correttamente nel DB centrale
         $this->assertDatabaseHas('refresh_tokens', [
             'global_identity_id' => $this->user->id,
-            'token' => $token,
+            'token' => hash('sha256', $token),
             'revoked' => 0,
         ]);
     }
