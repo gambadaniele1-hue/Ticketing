@@ -36,29 +36,42 @@ class RoleSeeder extends Seeder
             $role = Role::firstOrCreate($searchParams, $roleData);
 
             // --- Logica dei Permessi ---
-            // Recuperiamo i permessi (già precedentemente creati dal PermissionSeeder)
             $permissionQuery = Permission::query();
             if ($isShared) {
                 $permissionQuery->where('tenant_id', $tenantId);
             }
 
+            // Otteniamo solo gli ID che ci interessano in base al ruolo
             if ($role->name === 'Admin') {
-                $role->permissions()->sync((clone $permissionQuery)->pluck('id')->toArray());
+                $permissionIds = (clone $permissionQuery)->pluck('id');
             } elseif ($role->name === 'Agent') {
-                $role->permissions()->sync((clone $permissionQuery)->whereIn('slug', [
+                $permissionIds = (clone $permissionQuery)->whereIn('slug', [
                     'tickets.view',
                     'tickets.update',
                     'tickets.assign',
                     'messages.create',
                     'messages.internal'
-                ])->pluck('id')->toArray());
+                ])->pluck('id');
             } elseif ($role->name === 'Customer') {
-                $role->permissions()->sync((clone $permissionQuery)->whereIn('slug', [
+                $permissionIds = (clone $permissionQuery)->whereIn('slug', [
                     'tickets.view',
                     'tickets.create',
                     'messages.create'
-                ])->pluck('id')->toArray());
+                ])->pluck('id');
+            } else {
+                $permissionIds = collect(); // Ruolo sconosciuto, niente permessi
             }
+
+            // PREPARAZIONE DEI DATI PIVOT:
+            // Creiamo l'array associativo per il sync
+            $syncData = [];
+            foreach ($permissionIds as $id) {
+                // Se siamo in shared, aggiungiamo il tenant_id alla tabella pivot
+                $syncData[$id] = $isShared ? ['tenant_id' => $tenantId] : [];
+            }
+
+            // Infine, eseguiamo il sync con i dati extra!
+            $role->permissions()->sync($syncData);
         }
     }
 }

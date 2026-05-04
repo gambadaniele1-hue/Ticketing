@@ -17,7 +17,8 @@ class Role extends Model
 
     public function permissions(): BelongsToMany
     {
-        return $this->belongsToMany(Permission::class);
+        return $this->belongsToMany(Permission::class)
+            ->withPivot('tenant_id'); // <--- Aggiungi questo!
     }
 
     public function users(): HasMany
