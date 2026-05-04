@@ -26,7 +26,14 @@ class TenantRegistrationService
         // FLUSSO UNIFICATO: Niente transazioni automatiche.
         // Usiamo il nostro try/catch blindato per tutti i piani.
         try {
-            return $this->executeRegistration($data, $plan);
+            $tenant = $this->executeRegistration($data, $plan);
+
+            // --- AGGIUNGI QUESTA RIGA ALLA FINE ---
+            // Ora che la membership ESISTE SICURAMENTE, lanciamo il Job!
+            \App\Jobs\CreateTenantAdminUser::dispatchSync($tenant);
+            // (Usiamo dispatchSync così in fase di registrazione l'utente viene creato subito prima di rispondere al frontend)
+
+            return $tenant;
         } catch (Exception $e) {
             // Passiamo anche il $plan al rollback per fargli capire cosa pulire
             $this->manualRollback($data['subdomain'], $data['adminEmail'], $plan);

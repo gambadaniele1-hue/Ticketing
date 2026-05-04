@@ -7,6 +7,7 @@ use App\Jobs\CreateTenantMysqlUser;
 use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
+use App\Models\Tenant\Role;
 use App\Services\TenantRegistrationService;
 use DB;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
@@ -77,6 +78,9 @@ class TenantRegistrationServiceTest extends TestCase
     {
         Event::fake([TenantCreated::class, TenantDeleted::class]);
 
+        // AGGIUNGI QUESTA RIGA: Intercettiamo e blocchiamo il Job prima che faccia danni!
+        Bus::fake([CreateTenantAdminUser::class]);
+
         $plan = $this->createPlan('shared');
 
         $this->registerTenant($this->registrationData([
@@ -100,6 +104,9 @@ class TenantRegistrationServiceTest extends TestCase
     public function test_dedicated_plan_creates_tenant_with_custom_db_credentials(): void
     {
         Event::fake([TenantCreated::class, TenantDeleted::class]);
+
+        // AGGIUNGI QUESTA RIGA: Intercettiamo e blocchiamo il Job prima che faccia danni!
+        Bus::fake([CreateTenantAdminUser::class]);
 
         $plan = $this->createPlan('dedicated');
 
@@ -142,7 +149,6 @@ class TenantRegistrationServiceTest extends TestCase
         Bus::assertDispatched(JobPipeline::class, function (JobPipeline $pipeline): bool {
             return $pipeline->jobs === [
                 SeedDatabase::class,
-                CreateTenantAdminUser::class,
             ];
         });
     }
@@ -168,7 +174,6 @@ class TenantRegistrationServiceTest extends TestCase
                 CreateTenantMysqlUser::class,
                 MigrateDatabase::class,
                 SeedDatabase::class,
-                CreateTenantAdminUser::class, // Sempre per ultimo!
             ];
         });
     }
@@ -176,6 +181,8 @@ class TenantRegistrationServiceTest extends TestCase
     public function test_it_creates_domain_and_membership_during_registration(): void
     {
         Event::fake([TenantCreated::class, TenantDeleted::class]);
+        // AGGIUNGI QUESTA RIGA: Intercettiamo e blocchiamo il Job prima che faccia danni!
+        Bus::fake([CreateTenantAdminUser::class]);
 
         $plan = $this->createPlan('shared');
         $data = $this->registrationData(['planId' => $plan->id]);
@@ -248,6 +255,79 @@ class TenantRegistrationServiceTest extends TestCase
             // 3. Pulizia d'emergenza su MySQL
             DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
             DB::connection('mysql')->statement("DROP USER IF EXISTS 'usr_starkphysi'@'%'");
+        }
+    }
+
+    public function test_shared_plan_creates_local_user_in_tenant_database(): void
+    {
+        // 1. Arrange
+        $plan = $this->createPlan('shared');
+        $data = $this->registrationData([
+            'subdomain' => 'shareduser',
+            'adminEmail' => 'admin.shared@acme.com',
+            'planId' => $plan->id,
+        ]);
+        // 2. Act
+        $this->registerTenant($data);
+
+        // 3. Assert
+        $tenant = Tenant::find('shareduser');
+
+        // Recuperiamo l'identità globale appena creata per prendere il suo ID
+        $identity = GlobalIdentity::where('email', 'admin.shared@acme.com')->firstOrFail();
+
+        tenancy()->initialize($tenant);
+
+        try {
+            // Verifichiamo il link tramite global_user_id e il tenant_id (specifico per lo shared)
+            $this->assertDatabaseHas('users', [
+                'global_user_id' => $identity->id,
+                'tenant_id' => 'shareduser',
+            ], 'tenant');
+
+        } finally {
+            tenancy()->end();
+            $tenant->delete();
+        }
+    }
+
+    public function test_dedicated_plan_creates_local_user_in_tenant_database(): void
+    {
+        // 1. Arrange
+        $plan = $this->createPlan('dedicated');
+        $expectedDbName = 'tenant_dedicateduser';
+
+        $data = $this->registrationData([
+            'subdomain' => 'dedicateduser',
+            'adminEmail' => 'admin.dedicated@acme.com',
+            'planId' => $plan->id,
+        ]);
+
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+
+        // 2. Act
+        $this->registerTenant($data);
+
+        // 3. Assert
+        $tenant = Tenant::find('dedicateduser');
+        $identity = GlobalIdentity::where('email', 'admin.dedicated@acme.com')->firstOrFail();
+
+        tenancy()->initialize($tenant);
+
+        try {
+            // Sul piano dedicato non c'è la colonna tenant_id, cerchiamo solo la foreign key
+            $this->assertDatabaseHas('users', [
+                'global_user_id' => $identity->id,
+            ], 'tenant');
+
+        } finally {
+            tenancy()->end();
+
+            if ($tenant) {
+                $tenant->delete();
+            }
+            DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+            DB::connection('mysql')->statement("DROP USER IF EXISTS 'usr_dedicate'@'%'");
         }
     }
 
