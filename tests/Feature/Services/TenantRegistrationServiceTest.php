@@ -7,7 +7,11 @@ use App\Jobs\CreateTenantMysqlUser;
 use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
+use App\Models\Tenant\Category;
+use App\Models\Tenant\Permission;
 use App\Models\Tenant\Role;
+use App\Models\Tenant\SlaPolicy;
+use App\Models\Tenant\User;
 use App\Services\TenantRegistrationService;
 use DB;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
@@ -286,7 +290,16 @@ class TenantRegistrationServiceTest extends TestCase
             ], 'tenant');
 
         } finally {
+
+            // Puliamo tutte le tabelle che usano il tenant_id
+            User::where('tenant_id', $tenant->id)->forceDelete();
+            Role::where('tenant_id', $tenant->id)->delete();
+            Permission::where('tenant_id', $tenant->id)->delete();
+            SlaPolicy::where('tenant_id', $tenant->id)->delete();
+            Category::where('tenant_id', $tenant->id)->delete();
+
             tenancy()->end();
+
             $tenant->delete();
         }
     }
