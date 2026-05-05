@@ -8,7 +8,7 @@ use Symfony\Component\HttpFoundation\Response;
 use App\Services\JwtService;
 use App\Models\Global\GlobalIdentity;
 use Exception;
-use Firebase\JWT\ExpiredException;
+use Illuminate\Support\Facades\Log; // <--- Importata la facciata Log
 
 class JwtMiddleware
 {
@@ -19,53 +19,54 @@ class JwtMiddleware
         $this->jwtService = $jwtService;
     }
 
-    /**
-     * Handle an incoming request.
-     */
     public function handle(Request $request, Closure $next): Response
     {
-        // 1. Cerchiamo il token nel Cookie (o come fallback nell'Header Authorization per i test con Postman)
         $token = $request->cookie('access_token') ?? $request->bearerToken();
 
+        // La risposta "muro di gomma" standard per il frontend
+        $unauthorizedResponse = response()->json(['message' => 'Non autorizzato.'], 401);
+
         if (!$token) {
-            return response()->json(['message' => 'Non autorizzato: Token mancante'], 401);
+            Log::debug('JwtMiddleware: Accesso negato. Nessun token fornito.');
+            return $unauthorizedResponse;
         }
 
         try {
-            // 2. Usiamo il nostro fidato service per validare la firma e la scadenza
+            // Validazione firma e scadenza
             $payload = $this->jwtService->verifyToken($token);
 
-            // 3. Controlliamo che tipo di token ci hanno passato
+            // Controllo sul tipo di token
             if ($payload->type !== 'access') {
-                return response()->json(['message' => 'Non autorizzato: Tipo di token non valido'], 403);
+                Log::warning("JwtMiddleware: Tentativo di utilizzo di un token errato (Tipo ricevuto: {$payload->type}).");
+                return $unauthorizedResponse;
             }
 
-            // 4. Recuperiamo l'identità globale per comodità
-            // Usiamo Auth::loginUsingId() o semplicemente lo inietto nella request
+            // CONTROLLO DI SICUREZZA CROSS-TENANT
+            if (isset($payload->tenant_id) && $payload->tenant_id !== tenant('id')) {
+                Log::warning("JwtMiddleware: Violazione Cross-Tenant! Tentativo di usare un token del tenant [{$payload->tenant_id}] nel tenant [" . tenant('id') . "].");
+                return $unauthorizedResponse;
+            }
+
             $user = GlobalIdentity::find($payload->sub);
 
             if (!$user) {
-                return response()->json(['message' => 'Utente non trovato'], 404);
+                Log::warning("JwtMiddleware: Utente con ID {$payload->sub} non trovato nel database globale.");
+                return $unauthorizedResponse;
             }
 
-            // 5. Inietto i dati puliti e pronti nella Request
-            // Così in qualsiasi controller potrai fare: $request->attributes->get('tenant_id')
+            // Tutto pulito. Passiamo i dati alla Request
             $request->attributes->add([
                 'global_user' => $user,
                 'tenant_id' => $payload->tenant_id ?? null,
                 'role_id' => $payload->role_id ?? null,
             ]);
 
-            // Se tutto va bene, facciamo passare la richiesta al controller
             return $next($request);
 
-        } catch (ExpiredException $e) {
-            return response()->json([
-                'message' => 'Token scaduto',
-                'code' => 'TOKEN_EXPIRED' // Questo codice serve al frontend per capire che deve usare il refresh token
-            ], 401);
         } catch (Exception $e) {
-            return response()->json(['message' => 'Token non valido: ' . $e->getMessage()], 401);
+            // Cattura token scaduti, malformati o firme non valide
+            Log::debug("JwtMiddleware: Token rifiutato. Motivo: " . $e->getMessage());
+            return $unauthorizedResponse;
         }
     }
 }

@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\V1\Auth\LoginRequest;
 use App\Http\Resources\Global\GlobalIdentityResource;
 use App\Http\Resources\Global\TenantResource;
+use App\Http\Resources\Tenant\PermissionResource;
+use App\Http\Resources\Tenant\RoleResource;
 use App\Models\Global\GlobalIdentity;
 use App\Models\Global\RefreshToken;
+use App\Models\Tenant\Permission;
 use App\Models\Tenant\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -130,5 +133,35 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Sessione rinnovata con successo'
         ])->withCookie($accessCookie);
+    }
+
+    public function me(Request $request)
+    {
+        // 1. Il JwtMiddleware ha già verificato tutto e ci ha gentilmente iniettato l'utente globale!
+        $globalUser = $request->attributes->get('global_user');
+
+        // 2. Il pacchetto Tenancy ha già caricato il tenant corrente dall'URL
+        $currentTenant = tenant();
+
+        // 3. Essendo nel tenant, cerchiamo il profilo locale.
+        // Usiamo "with('role.permissions')" per caricare subito le relazioni senza fare query extra dopo
+        $localUser = User::with('role.permissions')
+            ->where('global_user_id', $globalUser->id)
+            ->first();
+
+        if (!$localUser) {
+            return response()->json(['message' => 'Profilo locale non trovato in questo workspace'], 404);
+        }
+
+        // 4. Rispondiamo usando le nostre API Resources!
+        return response()->json([
+            'data' => [
+                'user' => new GlobalIdentityResource($globalUser),
+                'tenant' => new TenantResource($currentTenant),
+                'role' => new RoleResource($localUser->role),
+                // Usiamo "collection" perché i permessi sono un array/lista
+                'permissions' => PermissionResource::collection($localUser->role->permissions),
+            ]
+        ]);
     }
 }

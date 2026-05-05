@@ -27,7 +27,7 @@ Route::middleware([
 
     // Rotte protette dal tuo JWT (chi è loggato)
     Route::middleware(['jwt.auth'])->group(function () {
-        //Route::get('/me', [AuthController::class, 'me']);
+        Route::get('/me', [AuthController::class, 'me']);
         //Route::post('/logout', [AuthController::class, 'logout']);
     });
 
