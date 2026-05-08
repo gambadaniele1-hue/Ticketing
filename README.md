@@ -1,59 +1,167 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 🎫 Ticketing API
+### Backend REST — Laravel 12
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+> API backend del sistema di ticketing multi-tenant ibrido. Gestisce autenticazione, routing per tenant, ruoli, permessi e l'intero ciclo di vita dei ticket.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 📌 Panoramica
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+**Ticketing API** è il cuore del sistema. Espone endpoint REST versionati sotto `/api/v1/` e gestisce l'isolamento multi-tenant tramite sottodominio, indirizzando ogni richiesta al database corretto in modo automatico e trasparente.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 🛠️ Stack
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+| Componente | Versione |
+|---|---|
+| PHP | 8.2+ |
+| Laravel | 12.0 |
+| MySQL | — |
+| stancl/tenancy | ^3.10 |
+| firebase/php-jwt | ^7.0 |
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## ⚙️ Installazione
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+# 1. Clona la repository
+git clone https://github.com/tuousername/ticketing-api.git
+cd ticketing-api
 
-### Premium Partners
+# 2. Installa le dipendenze
+composer install
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+# 3. Copia il file di configurazione
+cp .env.example .env
 
-## Contributing
+# 4. Genera la chiave applicativa
+php artisan key:generate
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+# 5. Configura il database nel file .env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=ticketing_global
+DB_USERNAME=root
+DB_PASSWORD=
 
-## Code of Conduct
+# 6. Esegui le migration
+php artisan migrate
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+# 7. Avvia il server
+php artisan serve
+```
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## 🔐 Autenticazione
 
-## License
+Il sistema usa **JWT custom** (`firebase/php-jwt`) con tre livelli di token, trasportati via cookie **HttpOnly + Secure + SameSite=Strict**.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+| Token | Durata | Scopo |
+|---|---|---|
+| Identity Token | 15 minuti | Flusso OTP — identifica l'utente prima della scelta del tenant |
+| Access Token | 1 ora | Autorizza le operazioni nel tenant, contiene `tenant_id` e `role_id` |
+| Refresh Token | 7 giorni | Rinnova l'access token, salvato nel DB come hash SHA-256 |
+
+Il middleware `JwtMiddleware` verifica il `tenant_id` su ogni richiesta protetta per prevenire accessi cross-tenant.
+
+---
+
+## 🌐 Endpoint API
+
+Tutti gli endpoint sono sotto `/api/v1/`. Il routing tenant è gestito dal middleware `InitializeTenancyByDomain`.
+
+### Autenticazione
+
+| Metodo | Path | Descrizione | Auth |
+|---|---|---|---|
+| `POST` | `/api/v1/register-tenant` | Registrazione nuova azienda | Pubblica |
+| `POST` | `/api/v1/auth/login` | Login con email e password | Pubblica (tenant) |
+| `POST` | `/api/v1/auth/refresh` | Rinnovo access token | Pubblica (tenant) |
+| `GET` | `/api/v1/auth/me` | Dati utente corrente | JWT |
+
+> Gli endpoint per ticket, messaggi, team, categorie e SLA sono in sviluppo.
+
+---
+
+## 🏗️ Struttura del progetto
+
+```
+app/
+├── Http/
+│   ├── Controllers/Api/V1/
+│   │   ├── AuthController.php
+│   │   └── TenantRegistrationController.php
+│   ├── Middleware/
+│   │   ├── JwtMiddleware.php
+│   │   └── ForceJsonResponse.php
+│   ├── Requests/V1/
+│   │   ├── LoginRequest.php
+│   │   └── StoreTenantRequest.php
+│   └── Resources/V1/
+│       ├── GlobalIdentityResource.php
+│       ├── TenantResource.php
+│       ├── RoleResource.php
+│       └── PermissionResource.php
+├── Models/
+│   ├── Global/
+│   │   ├── GlobalIdentity.php
+│   │   ├── Plan.php
+│   │   ├── Tenant.php
+│   │   ├── TenantMembership.php
+│   │   └── RefreshToken.php
+│   └── Tenant/
+│       ├── User.php
+│       ├── Role.php
+│       ├── Permission.php
+│       ├── Team.php
+│       ├── Category.php
+│       ├── Ticket.php
+│       ├── Message.php
+│       └── SlaPolicy.php
+├── Services/
+│   ├── JwtService.php
+│   └── TenantRegistrationService.php
+├── Jobs/
+│   ├── CreateTenantAdminUser.php
+│   └── CreateTenantMysqlUser.php
+├── Traits/
+│   └── BelongsToTenantHybrid.php
+└── Exceptions/
+    └── DatabaseAlreadyExistsException.php
+```
+
+---
+
+## 🗄️ Database
+
+Il sistema usa due livelli di database:
+
+**DB Globale** — identità utenti, tenant, piani, membership, refresh token.
+
+**DB Tenant** — dati operativi isolati per ogni azienda: utenti locali, ruoli, ticket, messaggi, team, categorie, SLA.
+
+Per approfondire lo schema completo consulta la [documentazione del progetto](https://github.com/tuousername/ticketing-docs/blob/main/01-progetto.md).
+
+---
+
+## 📦 Repository collegate
+
+| Repository | Descrizione |
+|---|---|
+| [`ticketing-mail`](https://github.com/tuousername/ticketing-mail) | Microservizio Go per l'invio email via Redis |
+| [`ticketing-app`](https://github.com/tuousername/ticketing-app) | Frontend Lovable |
+| [`ticketing-docs`](https://github.com/tuousername/ticketing-docs) | Documentazione completa |
+
+---
+
+## 👤 Autore
+
+Progetto realizzato come elaborato di quinta superiore — Informatica.
+
+---
+
+*API v1.0 — Laravel 12*
