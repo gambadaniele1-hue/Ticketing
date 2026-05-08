@@ -27,7 +27,7 @@
 
 ```bash
 # 1. Clona la repository
-git clone https://github.com/tuousername/ticketing-api.git
+git clone https://github.com/gambadaniele1-hue/ticketing-api.git
 cd ticketing-api
 
 # 2. Installa le dipendenze
@@ -144,7 +144,7 @@ Il sistema usa due livelli di database:
 
 **DB Tenant** — dati operativi isolati per ogni azienda: utenti locali, ruoli, ticket, messaggi, team, categorie, SLA.
 
-Per approfondire lo schema completo consulta la [documentazione del progetto](https://github.com/tuousername/ticketing-docs/blob/main/01-progetto.md).
+Per approfondire lo schema completo consulta la [documentazione del progetto](https://github.com/gambadaniele1-hue/ticketing-docs/blob/main/01-progetto.md).
 
 ---
 
@@ -152,9 +152,9 @@ Per approfondire lo schema completo consulta la [documentazione del progetto](ht
 
 | Repository | Descrizione |
 |---|---|
-| [`ticketing-mail`](https://github.com/tuousername/ticketing-mail) | Microservizio Go per l'invio email via Redis |
-| [`ticketing-app`](https://github.com/tuousername/ticketing-app) | Frontend Lovable |
-| [`ticketing-docs`](https://github.com/tuousername/ticketing-docs) | Documentazione completa |
+| [`ticketing-mail`](https://github.com/gambadaniele1-hue/ticketing-mail) | Microservizio Go per l'invio email via Redis |
+| [`ticketing-app`](https://github.com/gambadaniele1-hue/ticketing-app) | Frontend Lovable |
+| [`ticketing-docs`](https://github.com/gambadaniele1-hue/ticketing-docs) | Documentazione completa |
 
 ---
 
