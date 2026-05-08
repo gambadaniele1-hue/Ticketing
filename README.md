@@ -78,7 +78,7 @@ Tutti gli endpoint sono sotto `/api/v1/`. Il routing tenant è gestito dal middl
 
 | Metodo | Path | Descrizione | Auth |
 |---|---|---|---|
-| `POST` | `/api/v1/register-tenant` | Registrazione nuova azienda | Pubblica |
+| `POST` | `/api/v1/register-tenant` | Registrazione nuova azienda — verifica sottodominio, crea tenant, DB e utente Admin, invia OTP | Pubblica |
 | `POST` | `/api/v1/auth/login` | Login con email e password | Pubblica (tenant) |
 | `POST` | `/api/v1/auth/refresh` | Rinnovo access token | Pubblica (tenant) |
 | `GET` | `/api/v1/auth/me` | Dati utente corrente | JWT |
@@ -164,4 +164,4 @@ Progetto realizzato come elaborato di quinta superiore — Informatica.
 
 ---
 
-*API v1.0 — Laravel 12*
+*API v1.1 — Laravel 12*
