@@ -3,11 +3,19 @@
 namespace App\Jobs;
 
 use App\Models\Global\Tenant;
+use Exception;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class CreateTenantMysqlUser
+class CreateTenantMysqlUser implements ShouldQueue
 {
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
     public function __construct(private Tenant $tenant)
     {
     }
@@ -50,7 +58,7 @@ class CreateTenantMysqlUser
 
             Log::info("Creato utente MySQL isolato [{$dbUser}] per il tenant: {$this->tenant->id}");
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error("Fallita creazione utente MySQL per tenant {$this->tenant->id}: " . $e->getMessage());
             throw $e; // Rilanciamo l'errore così la pipeline si ferma e fa il rollback
         }

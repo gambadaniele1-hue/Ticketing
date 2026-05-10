@@ -7,13 +7,21 @@ use App\Jobs\CreateTenantMysqlUser;
 use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
+use App\Models\Tenant\Category;
+use App\Models\Tenant\Permission;
+use App\Models\Tenant\Role;
+use App\Models\Tenant\SlaPolicy;
+use App\Models\Tenant\User;
 use App\Services\TenantRegistrationService;
 use DB;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Stancl\JobPipeline\JobPipeline;
+use Stancl\Tenancy\Events\DatabaseCreated;
+use Stancl\Tenancy\Events\DatabaseSeeded;
 use Stancl\Tenancy\Events\TenantCreated;
 use Stancl\Tenancy\Events\TenantDeleted;
 use Stancl\Tenancy\Jobs\CreateDatabase;
@@ -23,7 +31,7 @@ use Tests\TestCase;
 
 class TenantRegistrationServiceTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTruncation;
 
     private function createPlan(string $databaseType = 'shared'): Plan
     {
@@ -74,6 +82,9 @@ class TenantRegistrationServiceTest extends TestCase
     {
         Event::fake([TenantCreated::class, TenantDeleted::class]);
 
+        // AGGIUNGI QUESTA RIGA: Intercettiamo e blocchiamo il Job prima che faccia danni!
+        Bus::fake([CreateTenantAdminUser::class]);
+
         $plan = $this->createPlan('shared');
 
         $this->registerTenant($this->registrationData([
@@ -97,6 +108,9 @@ class TenantRegistrationServiceTest extends TestCase
     public function test_dedicated_plan_creates_tenant_with_custom_db_credentials(): void
     {
         Event::fake([TenantCreated::class, TenantDeleted::class]);
+
+        // AGGIUNGI QUESTA RIGA: Intercettiamo e blocchiamo il Job prima che faccia danni!
+        Bus::fake([CreateTenantAdminUser::class]);
 
         $plan = $this->createPlan('dedicated');
 
@@ -139,7 +153,6 @@ class TenantRegistrationServiceTest extends TestCase
         Bus::assertDispatched(JobPipeline::class, function (JobPipeline $pipeline): bool {
             return $pipeline->jobs === [
                 SeedDatabase::class,
-                CreateTenantAdminUser::class,
             ];
         });
     }
@@ -165,7 +178,6 @@ class TenantRegistrationServiceTest extends TestCase
                 CreateTenantMysqlUser::class,
                 MigrateDatabase::class,
                 SeedDatabase::class,
-                CreateTenantAdminUser::class, // Sempre per ultimo!
             ];
         });
     }
@@ -173,6 +185,8 @@ class TenantRegistrationServiceTest extends TestCase
     public function test_it_creates_domain_and_membership_during_registration(): void
     {
         Event::fake([TenantCreated::class, TenantDeleted::class]);
+        // AGGIUNGI QUESTA RIGA: Intercettiamo e blocchiamo il Job prima che faccia danni!
+        Bus::fake([CreateTenantAdminUser::class]);
 
         $plan = $this->createPlan('shared');
         $data = $this->registrationData(['planId' => $plan->id]);
@@ -201,7 +215,7 @@ class TenantRegistrationServiceTest extends TestCase
         $expectedDbName = 'tenant_starkphysical';
 
         // 0. PULIZIA PREVENTIVA: Se un test di ieri si è bloccato e ha lasciato il DB, piallalo prima di iniziare.
-        DB::statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
 
         // 1. Arrange
         $plan = $this->createPlan('dedicated');
@@ -243,10 +257,257 @@ class TenantRegistrationServiceTest extends TestCase
             }
 
             // 3. Pulizia d'emergenza su MySQL
-            DB::statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
-            DB::statement("DROP USER IF EXISTS 'usr_starkphysi'@'%'");
-            DB::statement("DROP USER IF EXISTS 'usr_starkphysi'@'127.0.0.1'");
-            DB::statement("DROP USER IF EXISTS 'usr_starkphysi'@'localhost'");
+            DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+            DB::connection('mysql')->statement("DROP USER IF EXISTS 'usr_starkphysi'@'%'");
         }
+    }
+
+    public function test_shared_plan_creates_local_user_in_tenant_database(): void
+    {
+        // 1. Arrange
+        $plan = $this->createPlan('shared');
+        $data = $this->registrationData([
+            'subdomain' => 'shareduser',
+            'adminEmail' => 'admin.shared@acme.com',
+            'planId' => $plan->id,
+        ]);
+        // 2. Act
+        $this->registerTenant($data);
+
+        // 3. Assert
+        $tenant = Tenant::find('shareduser');
+
+        // Recuperiamo l'identità globale appena creata per prendere il suo ID
+        $identity = GlobalIdentity::where('email', 'admin.shared@acme.com')->firstOrFail();
+
+        tenancy()->initialize($tenant);
+
+        try {
+            // Verifichiamo il link tramite global_user_id e il tenant_id (specifico per lo shared)
+            $this->assertDatabaseHas('users', [
+                'global_user_id' => $identity->id,
+                'tenant_id' => 'shareduser',
+            ], 'tenant');
+
+        } finally {
+
+            // Puliamo tutte le tabelle che usano il tenant_id
+            User::where('tenant_id', $tenant->id)->forceDelete();
+            Role::where('tenant_id', $tenant->id)->delete();
+            Permission::where('tenant_id', $tenant->id)->delete();
+            SlaPolicy::where('tenant_id', $tenant->id)->delete();
+            Category::where('tenant_id', $tenant->id)->delete();
+
+            tenancy()->end();
+
+            $tenant->delete();
+        }
+    }
+
+    public function test_dedicated_plan_creates_local_user_in_tenant_database(): void
+    {
+        // 1. Arrange
+        $plan = $this->createPlan('dedicated');
+        $expectedDbName = 'tenant_dedicateduser';
+
+        $data = $this->registrationData([
+            'subdomain' => 'dedicateduser',
+            'adminEmail' => 'admin.dedicated@acme.com',
+            'planId' => $plan->id,
+        ]);
+
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+
+        // 2. Act
+        $this->registerTenant($data);
+
+        // 3. Assert
+        $tenant = Tenant::find('dedicateduser');
+        $identity = GlobalIdentity::where('email', 'admin.dedicated@acme.com')->firstOrFail();
+
+        tenancy()->initialize($tenant);
+
+        try {
+            // Sul piano dedicato non c'è la colonna tenant_id, cerchiamo solo la foreign key
+            $this->assertDatabaseHas('users', [
+                'global_user_id' => $identity->id,
+            ], 'tenant');
+
+        } finally {
+            tenancy()->end();
+
+            if ($tenant) {
+                $tenant->delete();
+            }
+            DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+            DB::connection('mysql')->statement("DROP USER IF EXISTS 'usr_dedicate'@'%'");
+        }
+    }
+
+    public function test_it_rolls_back_data_if_dedicated_registration_fails(): void
+    {
+        // 1. Arrange
+        $plan = $this->createPlan('dedicated');
+        $expectedDbName = 'tenant_faildomain';
+
+        $data = [
+            'companyName' => 'Fail Corp',
+            'subdomain' => 'faildomain',
+            'adminName' => 'Mario Fail',
+            'adminEmail' => 'mario@fail.com',
+            'adminPassword' => 'password123',
+            'planId' => $plan->id,
+        ];
+
+        // Pulizia preventiva
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+
+        // TRUCCO: Ascoltiamo l'evento di creazione del Tenant. Non appena Laravel prova 
+        // a lanciare i Job per creare il database fisico, noi sganciamo una bomba (Eccezione).
+        Event::listen(TenantCreated::class, function () {
+            throw new \Exception("Simulazione di un errore di sistema critico!");
+        });
+
+        // 2. Act
+        try {
+            $service = app(TenantRegistrationService::class);
+            $service->register($data);
+
+            // Se arriviamo a questa riga, significa che l'eccezione non è partita. Il test deve fallire!
+            $this->fail('Il test avrebbe dovuto lanciare una eccezione e fermarsi prima.');
+
+        } catch (\Exception $e) {
+            // Verifichiamo che sia esattamente il nostro errore simulato
+            $this->assertEquals("Simulazione di un errore di sistema critico!", $e->getMessage());
+        }
+
+        // 3. Assert (Il vero test del Rollback)
+
+        // A. L'identità globale creata all'inizio DEVE essere stata eliminata dal rollback manuale
+        $this->assertDatabaseMissing('global_identities', [
+            'email' => 'mario@fail.com'
+        ]);
+
+        // B. Il record del tenant DEVE essere stato eliminato
+        $this->assertDatabaseMissing('tenants', [
+            'id' => 'faildomain'
+        ]);
+
+        // C. Nessun database fisico deve essere rimasto in giro
+        $databaseExists = DB::select(
+            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?",
+            [$expectedDbName]
+        );
+        $this->assertEmpty($databaseExists, "Errore: Il database fisico non è stato ripulito!");
+
+        // 4. Pulizia finale per sicurezza
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+        DB::connection('mysql')->statement("DROP USER IF EXISTS 'usr_faildoma'@'%'");
+    }
+
+    public function test_it_rolls_back_everything_if_dedicated_seeding_fails(): void
+    {
+        $plan = $this->createPlan('dedicated');
+        $expectedDbName = 'tenant_crashdomain';
+
+        $data = [
+            'companyName' => 'Crash Corp',
+            'subdomain' => 'crashdomain',
+            'adminName' => 'Mario Crash',
+            'adminEmail' => 'mario@crash.com',
+            'adminPassword' => 'password123',
+            'planId' => $plan->id,
+        ];
+
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+
+        // TRUCCO AVANZATO: Intercettiamo il Job 'SeedDatabase'. 
+        // Lasciamo che il sistema crei il DB e le tabelle, ma quando arriva il momento di seedare, facciamo esplodere tutto.
+        Event::listen(DatabaseSeeded::class, function () {
+            throw new \Exception("Errore critico durante il seeding!");
+        });
+
+        try {
+            $service = app(TenantRegistrationService::class);
+            $service->register($data);
+
+            $this->fail('Il test avrebbe dovuto lanciare una eccezione.');
+        } catch (\Exception $e) {
+            $this->assertEquals("Errore critico durante il seeding!", $e->getMessage());
+        }
+
+        // --- VERIFICHE DEL ROLLBACK MANUALE ---
+
+        // 0. TORNAMO A CASA: Usciamo forzatamente dal database del tenant.
+        // Siccome il processo è crashato a metà, Laravel è rimasto connesso al DB sbagliato!
+        if (tenancy()->initialized) {
+            tenancy()->end();
+        }
+
+        // 1. Dati centrali eliminati
+        $this->assertDatabaseMissing('global_identities', ['email' => 'mario@crash.com']);
+        $this->assertDatabaseMissing('tenants', ['id' => 'crashdomain']);
+
+        // 2. Database fisico eliminato
+        // ATTENZIONE: Questo passa solo se in config/tenancy.php l'evento TenantDeleted 
+        // è mappato al Job DeleteDatabase::class.
+        $databaseExists = DB::select(
+            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?",
+            [$expectedDbName]
+        );
+        $this->assertEmpty($databaseExists, "Errore: Il database fisico '{$expectedDbName}' è stato lasciato orfano!");
+
+        // Pulizia di sicurezza
+        DB::connection('mysql')->statement("DROP DATABASE IF EXISTS `{$expectedDbName}`");
+        DB::connection('mysql')->statement("DROP USER IF EXISTS 'usr_crashdom'@'%'");
+    }
+
+    public function test_it_rolls_back_data_if_shared_registration_fails(): void
+    {
+        $plan = $this->createPlan('shared');
+
+        $data = [
+            'companyName' => 'Shared Fail Corp',
+            'subdomain' => 'sharedfail',
+            'adminName' => 'Luigi Fail',
+            'adminEmail' => 'luigi@sharedfail.com',
+            'adminPassword' => 'password123',
+            'planId' => $plan->id,
+        ];
+
+        // Qui facciamo fallire subito l'evento di creazione per testare la transazione di Laravel
+        Event::listen(DatabaseSeeded::class, function () {
+            throw new \Exception("Errore simulato su piano shared!");
+        });
+
+        try {
+            $service = app(TenantRegistrationService::class);
+            $service->register($data);
+
+            $this->fail('Il test avrebbe dovuto lanciare una eccezione.');
+        } catch (\Exception $e) {
+            $this->assertEquals("Errore simulato su piano shared!", $e->getMessage());
+        }
+
+        // --- VERIFICHE DELLA TRANSAZIONE ---
+
+        // 0. TORNAMO A CASA: Sganciamoci dal DB del tenant
+        if (function_exists('tenancy') && tenancy()->initialized) {
+            tenancy()->end();
+        }
+
+        // La DB::transaction() avrebbe dovuto annullare tutto in automatico!
+        // 1. Aggiungiamo 'mysql' per forzare la lettura sul database centrale
+        $this->assertDatabaseMissing('global_identities', [
+            'email' => 'luigi@sharedfail.com'
+        ], 'mysql');
+
+        $this->assertDatabaseMissing('tenants', [
+            'id' => 'sharedfail'
+        ], 'mysql');
+
+        $this->assertDatabaseMissing('domains', [
+            'domain' => 'sharedfail.localhost' // O il dominio base che usi
+        ], 'mysql');
     }
 }

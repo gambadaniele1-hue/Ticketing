@@ -7,6 +7,7 @@ use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
 use App\Models\Global\TenantMembership;
+use Exception;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -20,34 +21,109 @@ class TenantRegistrationService
     {
         $plan = Plan::findOrFail($data['planId']);
 
-        // --- 1. PRE-FLIGHT CHECKS (Il nostro scudo) ---
-        // Rimane fuori dalla transazione per non bloccare inutilmente il DB 
-        // mentre interroghiamo INFORMATION_SCHEMA
         $this->runPreflightChecks($data['subdomain'], $plan);
 
-        // --- 2. TRANSAZIONE SUL DATABASE CENTRALE ---
-        // Se una qualsiasi cosa fallisce qui dentro, Laravel annulla le query precedenti in automatico.
-        return DB::transaction(function () use ($data, $plan) {
+        // FLUSSO UNIFICATO: Niente transazioni automatiche.
+        // Usiamo il nostro try/catch blindato per tutti i piani.
+        try {
+            $tenant = $this->executeRegistration($data, $plan);
 
-            // 1. Creiamo l'identità
-            $identity = $this->createGlobalIdentity($data);
+            // --- AGGIUNGI QUESTA RIGA ALLA FINE ---
+            // Ora che la membership ESISTE SICURAMENTE, lanciamo il Job!
+            \App\Jobs\CreateTenantAdminUser::dispatchSync($tenant);
+            // (Usiamo dispatchSync così in fase di registrazione l'utente viene creato subito prima di rispondere al frontend)
 
-            // 2. Controllo duplicati (con blocco in scrittura per sicurezza estrema)
-            if (Tenant::where('id', $data['subdomain'])->lockForUpdate()->exists()) {
-                throw new DatabaseAlreadyExistsException('Il subdomain "' . $data['subdomain'] . '" è già in uso.');
+            return $tenant;
+        } catch (Exception $e) {
+            // Passiamo anche il $plan al rollback per fargli capire cosa pulire
+            $this->manualRollback($data['subdomain'], $data['adminEmail'], $plan);
+            throw $e;
+        }
+    }
+
+    /**
+     * Il cuore della registrazione. Adesso non sa nulla di transazioni.
+     */
+    private function executeRegistration(array $data, Plan $plan): Tenant
+    {
+        $identity = $this->createGlobalIdentity($data);
+        $tenant = $this->createTenantRecord($data, $plan);
+        $this->createTenantDomain($tenant, $data['subdomain']);
+        $this->linkIdentityToTenant($identity, $tenant);
+
+        return $tenant;
+    }
+
+    /**
+     * Cerca di eliminare i record creati se la registrazione dedicata fallisce.
+     */
+    private function manualRollback(string $subdomain, string $email, Plan $plan): void
+    {
+        if (tenancy()->initialized) {
+            tenancy()->end();
+        }
+
+        // 1. Pulizia Tenant e dati correlati
+        try {
+            $tenant = Tenant::find($subdomain);
+            if ($tenant) {
+                // NOVITÀ: Se il piano è shared, svuotiamo i dati del seeder prima di eliminare il tenant
+                if ($plan->database_type === 'shared') {
+                    $this->cleanupSharedSeederData($tenant);
+                }
+
+                $tenant->delete();
             }
+        } catch (Exception $e) {
+            Log::warning("Impossibile eliminare il tenant nel rollback: " . $e->getMessage());
+        }
 
-            // 3. Creiamo il record del tenant (e generiamo i dati DB)
-            $tenant = $this->createTenantRecord($data, $plan);
+        // 2. Pulizia Identità
+        try {
+            $identity = GlobalIdentity::where('email', $email)->first();
+            if ($identity) {
+                $identity->forceDelete(); // Usiamo forceDelete per scavalcare eventuali SoftDeletes!
+            }
+        } catch (Exception $e) {
+            Log::warning("Impossibile eliminare l'identità nel rollback: " . $e->getMessage());
+        }
+    }
 
-            // 4. Creiamo il dominio
-            $this->createTenantDomain($tenant, $data['subdomain']);
+    /**
+     * Pulisce i record rimasti orfani nel database condiviso.
+     */
+    private function cleanupSharedSeederData(Tenant $tenant): void
+    {
+        try {
+            // Inizializziamo il tenant per puntare alla connessione corretta
+            tenancy()->initialize($tenant);
 
-            // 5. Colleghiamo l'identità al tenant
-            $this->linkIdentityToTenant($identity, $tenant);
+            // Opzione A: Se usi i Model che usano il trait "BelongsToTenant" di Stancl, 
+            // il tenant_id viene aggiunto automaticamente alla query.
+            // \App\Models\Category::query()->delete();
 
-            return $tenant; // Finito!
-        });
+            // Opzione B (Più sicura se non sei certo dei Model): Usa le query grezze
+            // dicendo esplicitamente di cancellare SOLO i dati di questo tenant!
+            DB::connection('tenant')->table('categories')->where('tenant_id', $tenant->id)->delete();
+            DB::connection('tenant')->table('permissions')->where('tenant_id', $tenant->id)->delete();
+            DB::connection('tenant')->table('permission_role')->where('tenant_id', $tenant->id)->delete();
+            DB::connection('tenant')->table('roles')->where('tenant_id', $tenant->id)->delete();
+            DB::connection('tenant')->table('sla_polices')->where('tenant_id', $tenant->id)->delete();
+
+            DB::connection('tenant')->table('users')->where('tenant_id', $tenant->id)->delete();
+
+            // Aggiungi qui altre tabelle riempite dal tuo Seeder
+            // DB::connection('tenant')->table('products')->where('tenant_id', $tenant->id)->delete();
+            // DB::connection('tenant')->table('orders')->where('tenant_id', $tenant->id)->delete();
+
+        } catch (Exception $e) {
+            Log::error("Fallita la pulizia dei dati shared per il tenant {$tenant->id}: " . $e->getMessage());
+        } finally {
+            // Usciamo sempre dal tenant alla fine!
+            if (tenancy()->initialized) {
+                tenancy()->end();
+            }
+        }
     }
 
     /**
@@ -74,9 +150,7 @@ class TenantRegistrationService
             );
 
             if (!empty($databaseExists)) {
-                throw ValidationException::withMessages([
-                    'subdomain' => "Errore di sistema: Il database fisico '{$dbName}' è già presente sul server. Scegli un altro nome o contatta l'assistenza."
-                ]);
+                throw new DatabaseAlreadyExistsException;
             }
         }
     }

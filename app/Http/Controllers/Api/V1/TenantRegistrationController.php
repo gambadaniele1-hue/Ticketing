@@ -21,7 +21,7 @@ class TenantRegistrationController extends Controller
         // Deleghiamo al service passando i dati validati
         $tenant = $this->registrationService->register($request->validated());
 
-        $domain = $tenant->domains->first()->domain;
+        $domain = $tenant->domains()->first()?->domain ?? '';
 
         return response()->json([
             'message' => 'Tenant creato con successo. Benvenuto a bordo!',
