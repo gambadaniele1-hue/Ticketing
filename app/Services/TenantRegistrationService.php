@@ -223,10 +223,10 @@ class TenantRegistrationService
 
         OtpCode::create([
             'global_identity_id' => $identity->id,
-            'code' => $code,
+            'code' => Hash::make($code), // ← aggiungi Hash::make()
             'expires_at' => now()->addMinutes(10),
         ]);
 
-        return $code;
+        return $code; // ← restituiamo il codice in chiaro per mandarlo via mail
     }
 }
