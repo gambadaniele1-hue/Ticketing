@@ -23,7 +23,7 @@ Route::middleware([
 
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/refresh', [AuthController::class, 'refresh']);
-    //Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/register', [AuthController::class, 'register']);
 
     // Rotte protette dal tuo JWT (chi è loggato)
     Route::middleware(['jwt.auth'])->group(function () {
