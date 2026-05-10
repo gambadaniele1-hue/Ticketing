@@ -1,4 +1,5 @@
 # 🎫 Ticketing API
+
 ### Backend REST — Laravel 12
 
 > API backend del sistema di ticketing multi-tenant ibrido. Gestisce autenticazione, routing per tenant, ruoli, permessi e l'intero ciclo di vita dei ticket.
@@ -13,13 +14,13 @@
 
 ## 🛠️ Stack
 
-| Componente | Versione |
-|---|---|
-| PHP | 8.2+ |
-| Laravel | 12.0 |
-| MySQL | — |
-| stancl/tenancy | ^3.10 |
-| firebase/php-jwt | ^7.0 |
+| Componente       | Versione |
+| ---------------- | -------- |
+| PHP              | 8.2+     |
+| Laravel          | 12.0     |
+| MySQL            | —        |
+| stancl/tenancy   | ^3.10    |
+| firebase/php-jwt | ^7.0     |
 
 ---
 
@@ -60,11 +61,11 @@ php artisan serve
 
 Il sistema usa **JWT custom** (`firebase/php-jwt`) con tre livelli di token, trasportati via cookie **HttpOnly + Secure + SameSite=Strict**.
 
-| Token | Durata | Scopo |
-|---|---|---|
-| Identity Token | 15 minuti | Flusso OTP — identifica l'utente prima della scelta del tenant |
-| Access Token | 1 ora | Autorizza le operazioni nel tenant, contiene `tenant_id` e `role_id` |
-| Refresh Token | 7 giorni | Rinnova l'access token, salvato nel DB come hash SHA-256 |
+| Token          | Durata    | Scopo                                                                |
+| -------------- | --------- | -------------------------------------------------------------------- |
+| Identity Token | 15 minuti | Flusso OTP — identifica l'utente prima della scelta del tenant       |
+| Access Token   | 1 ora     | Autorizza le operazioni nel tenant, contiene `tenant_id` e `role_id` |
+| Refresh Token  | 7 giorni  | Rinnova l'access token, salvato nel DB come hash SHA-256             |
 
 Il middleware `JwtMiddleware` verifica il `tenant_id` su ogni richiesta protetta per prevenire accessi cross-tenant.
 
@@ -76,12 +77,12 @@ Tutti gli endpoint sono sotto `/api/v1/`. Il routing tenant è gestito dal middl
 
 ### Autenticazione
 
-| Metodo | Path | Descrizione | Auth |
-|---|---|---|---|
-| `POST` | `/api/v1/register-tenant` | Registrazione nuova azienda — verifica sottodominio, crea tenant, DB e utente Admin, invia OTP | Pubblica |
-| `POST` | `/api/v1/auth/login` | Login con email e password | Pubblica (tenant) |
-| `POST` | `/api/v1/auth/refresh` | Rinnovo access token | Pubblica (tenant) |
-| `GET` | `/api/v1/auth/me` | Dati utente corrente | JWT |
+| Metodo | Path                      | Descrizione                                                                                    | Auth              |
+| ------ | ------------------------- | ---------------------------------------------------------------------------------------------- | ----------------- |
+| `POST` | `/api/v1/register-tenant` | Registrazione nuova azienda — verifica sottodominio, crea tenant, DB e utente Admin, invia OTP | Pubblica          |
+| `POST` | `/api/v1/auth/login`      | Login con email e password                                                                     | Pubblica (tenant) |
+| `POST` | `/api/v1/auth/refresh`    | Rinnovo access token                                                                           | Pubblica (tenant) |
+| `GET`  | `/api/v1/auth/me`         | Dati utente corrente                                                                           | JWT               |
 
 > Gli endpoint per ticket, messaggi, team, categorie e SLA sono in sviluppo.
 
@@ -150,11 +151,11 @@ Per approfondire lo schema completo consulta la [documentazione del progetto](ht
 
 ## 📦 Repository collegate
 
-| Repository | Descrizione |
-|---|---|
+| Repository                                                              | Descrizione                                  |
+| ----------------------------------------------------------------------- | -------------------------------------------- |
 | [`ticketing-mail`](https://github.com/gambadaniele1-hue/ticketing-mail) | Microservizio Go per l'invio email via Redis |
-| [`ticketing-app`](https://github.com/gambadaniele1-hue/ticketing-app) | Frontend Lovable |
-| [`ticketing-docs`](https://github.com/gambadaniele1-hue/ticketing-docs) | Documentazione completa |
+| [`ticketing-app`](https://github.com/gambadaniele1-hue/ticketing-app)   | Frontend Lovable                             |
+| [`ticketing-docs`](https://github.com/gambadaniele1-hue/ticketing-docs) | Documentazione completa                      |
 
 ---
 
@@ -164,4 +165,4 @@ Progetto realizzato come elaborato di quinta superiore — Informatica.
 
 ---
 
-*API v1.1 — Laravel 12*
+_API v1.1 — Laravel 12_
