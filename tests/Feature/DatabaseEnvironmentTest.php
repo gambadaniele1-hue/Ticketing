@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Exception;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -21,7 +22,7 @@ class DatabaseEnvironmentTest extends TestCase
             $result = DB::select("SELECT 1 AS health_check");
             $this->assertEquals(1, $result[0]->health_check);
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->fail("Errore di connessione al DB Centrale. Controlla il file .env. Dettaglio: " . $e->getMessage());
         }
     }
@@ -53,7 +54,7 @@ class DatabaseEnvironmentTest extends TestCase
             $stillExists = DB::select("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?", [$dummyDbName]);
             $this->assertEmpty($stillExists, "Il comando DROP DATABASE è passato, ma il DB esiste ancora.");
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->fail("L'utente MySQL (" . env('DB_USERNAME') . ") NON ha i permessi necessari! Deve avere i privilegi CREATE e DROP. Dettaglio: " . $e->getMessage());
         }
     }

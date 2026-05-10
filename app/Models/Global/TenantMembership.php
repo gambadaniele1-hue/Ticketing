@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TenantMembership extends Model
 {
+    protected $connection = 'mysql';
     protected $fillable = [ // Mass assignment protetto [cite: 180]
         'global_user_id',
         'tenant_id',

@@ -10,6 +10,11 @@ class GlobalIdentity extends Model
 {
     use SoftDeletes; // SoftDeletes [cite: 65]
 
+    // ECCO LA MAGIA!
+    // Diciamo a questo modello di usare SEMPRE la connessione centrale.
+    // (Di default in Laravel si chiama 'mysql', a meno che in database.php
+    // tu non abbia creato una connessione chiamata 'central').
+
     protected $fillable = [ // Mass assignment protetto [cite: 180]
         'name',
         'email',
@@ -37,5 +42,10 @@ class GlobalIdentity extends Model
     public function getConnectionName()
     {
         return config('tenancy.database.central_connection');
+    }
+
+    public function refreshTokens()
+    {
+        return $this->hasMany(RefreshToken::class, 'global_identity_id');
     }
 }

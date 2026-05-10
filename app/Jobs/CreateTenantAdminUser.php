@@ -54,7 +54,8 @@ class CreateTenantAdminUser implements ShouldQueue
             $adminRole = Role::where('name', 'Admin')->first();
 
             if (!$adminRole) {
-                Log::warning("Ruolo 'Admin' non trovato nel tenant {$this->tenant->id}. L'utente è stato creato senza ruolo.");
+                Log::warning("Ruolo 'Admin' non trovato nel tenant {$this->tenant->id}. L'utente non verrà creato.");
+                return;
             }
 
             $userData['role_id'] = $adminRole->id;

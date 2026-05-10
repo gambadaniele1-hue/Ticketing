@@ -18,6 +18,9 @@ return new class extends Migration {
 
             if (DB::connection()->getDatabaseName() == env('SHARED_DB_NAME', 'ticketing_shared')) {
                 $table->string('tenant_id')->nullable(); // Per identificare a quale tenant appartiene il ruolo
+                $table->unique(['name', 'tenant_id']);
+            } else {
+                $table->unique('name');
             }
         });
     }

@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Jobs\CreateTenantAdminUser;
+use App\Jobs\CreateTenantMysqlUser;
 use App\Models\Global\Plan;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -31,14 +34,12 @@ class TenancyServiceProvider extends ServiceProvider
                     $jobs = $isShared ? [
                             // Se è Shared: usiamo i dati del .env, niente utenti custom, ma creiamo l'admin tenant
                         Jobs\SeedDatabase::class,
-                        \App\Jobs\CreateTenantAdminUser::class,
                     ] : [
                             // Se è Dedicated: Facciamo l'infrastruttura super-sicura
                         Jobs\CreateDatabase::class,           // 1. Crea il database 'tenant_acme'
-                        \App\Jobs\CreateTenantMysqlUser::class, // 2. <-- IL NOSTRO NUOVO JOB! Crea 'user_acme'
+                        CreateTenantMysqlUser::class, // 2. <-- IL NOSTRO NUOVO JOB! Crea 'user_acme'
                         Jobs\MigrateDatabase::class,          // 3. Crea le tabelle
                         Jobs\SeedDatabase::class,             // 4. Inserisce i dati base
-                        \App\Jobs\CreateTenantAdminUser::class,
                     ];
 
                     $listener = JobPipeline::make($jobs)->send(function (Events\TenantCreated $innerEvent) {
@@ -162,7 +163,7 @@ class TenancyServiceProvider extends ServiceProvider
         ];
 
         foreach (array_reverse($tenancyMiddleware) as $middleware) {
-            $this->app[\Illuminate\Contracts\Http\Kernel::class]->prependToMiddlewarePriority($middleware);
+            $this->app[Kernel::class]->prependToMiddlewarePriority($middleware);
         }
     }
 
