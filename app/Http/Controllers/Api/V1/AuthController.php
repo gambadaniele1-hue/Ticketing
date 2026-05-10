@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\V1\Auth\LoginRequest;
+use App\Http\Requests\V1\Auth\RegisterUserRequest;
 use App\Http\Resources\Global\GlobalIdentityResource;
 use App\Http\Resources\Global\TenantResource;
 use App\Http\Resources\Tenant\PermissionResource;
@@ -12,17 +13,31 @@ use App\Models\Global\GlobalIdentity;
 use App\Models\Global\RefreshToken;
 use App\Models\Tenant\Permission;
 use App\Models\Tenant\User;
+use App\Services\JwtService;
+use App\Services\UserRegistrationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use App\Services\JwtService;
 
 class AuthController extends Controller
 {
     protected JwtService $jwtService;
+    protected UserRegistrationService $userRegistrationService;
 
-    public function __construct(JwtService $jwtService)
+    public function __construct(JwtService $jwtService, UserRegistrationService $userRegistrationService)
     {
         $this->jwtService = $jwtService;
+        $this->userRegistrationService = $userRegistrationService;
+    }
+
+    public function register(RegisterUserRequest $request)
+    {
+        $currentTenant = tenant();
+
+        $this->userRegistrationService->register($request->validated(), $currentTenant);
+
+        return response()->json([
+            'message' => 'Registrazione completata. Sei in attesa di approvazione.',
+        ], 201);
     }
 
     public function login(LoginRequest $request)

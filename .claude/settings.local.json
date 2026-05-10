@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(Get-ChildItem -Path \"c:\\\\Progetti\\\\Ticketing-project\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "Bash(find c:\\\\\\\\Progetti\\\\\\\\Ticketing-project -type f -name \"*.php\" -o -name \"*.json\" -o -name \"*.sql\" -o -name \"*.md\")",
+      "Bash(php artisan *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
