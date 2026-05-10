@@ -74,13 +74,21 @@ class AuthController extends Controller
         $refreshToken = $this->jwtService->createRefreshToken($user);
 
         // 6. Creazione Cookie
-        $accessCookie = cookie('access_token', $accessToken, 60, '/', null, env('APP_ENV') !== 'local', true, false, 'Strict');
-        $refreshCookie = cookie('refresh_token', $refreshToken, 10080, '/', null, env('APP_ENV') !== 'local', true, false, 'Strict');
+        $cookiePath = config('session.path', '/');
+        $cookieDomain = config('session.domain');
+        $cookieSecure = config('session.secure');
+        $cookieSameSite = config('session.same_site', 'lax');
+
+        $accessCookie = cookie('access_token', $accessToken, 60, $cookiePath, $cookieDomain, $cookieSecure, true, false, $cookieSameSite);
+        $refreshCookie = cookie('refresh_token', $refreshToken, 10080, $cookiePath, $cookieDomain, $cookieSecure, true, false, $cookieSameSite);
+
+        $role = $localUser->role();
 
         return response()->json([
             'message' => 'Login completato con successo',
             'data' => [
                 'user' => new GlobalIdentityResource($user),
+                'role' => new RoleResource($role),
                 'tenant' => new TenantResource($currentTenant),
             ]
         ])->withCookie($accessCookie)->withCookie($refreshCookie);
@@ -136,12 +144,12 @@ class AuthController extends Controller
             'access_token',
             $newAccessToken,
             60,
-            '/',
-            null,
-            env('APP_ENV') !== 'local', // Secure solo in produzione
-            true,                       // HttpOnly
+            config('session.path', '/'),
+            config('session.domain'),
+            config('session.secure'),
+            true,
             false,
-            'Strict'                    // SameSite
+            config('session.same_site', 'lax')
         );
 
         // 9. Rispondiamo con il nuovo cookie
