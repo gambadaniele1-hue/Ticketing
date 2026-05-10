@@ -15,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Illuminate\Support\Facades\Redis;
 
 class UserRegistrationTest extends TestCase
 {
@@ -33,6 +34,7 @@ class UserRegistrationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Redis::flushDB();
 
         $this->adminEmail = 'admin+' . Str::lower(Str::random(8)) . '@acme.com';
 
@@ -44,11 +46,11 @@ class UserRegistrationTest extends TestCase
 
         $this->tenant = app(TenantRegistrationService::class)->register([
             'companyName' => 'Acme Corp',
-            'subdomain'   => 'acme-reg-' . Str::lower(Str::random(6)),
-            'adminName'   => 'Admin Acme',
-            'adminEmail'  => $this->adminEmail,
+            'subdomain' => 'acme-reg-' . Str::lower(Str::random(6)),
+            'adminName' => 'Admin Acme',
+            'adminEmail' => $this->adminEmail,
             'adminPassword' => 'Secret-1234',
-            'planId'      => $this->plan->id,
+            'planId' => $this->plan->id,
         ]);
 
         $this->tenantDomain = $this->tenant->domains()->value('domain');
@@ -87,8 +89,8 @@ class UserRegistrationTest extends TestCase
     {
         $response = $this->withServerVariables(['HTTP_HOST' => $this->tenantDomain])
             ->postJson($this->registerUrl(), [
-                'name'     => 'Mario Rossi',
-                'email'    => 'mario.rossi@example.com',
+                'name' => 'Mario Rossi',
+                'email' => 'mario.rossi@example.com',
                 'password' => 'Password-123',
             ]);
 
@@ -97,7 +99,7 @@ class UserRegistrationTest extends TestCase
 
         // Viene creata la global_identity (connessione centrale esplicita perché la tenancy è ancora attiva)
         $this->assertDatabaseHas('global_identities', [
-            'name'  => 'Mario Rossi',
+            'name' => 'Mario Rossi',
             'email' => 'mario.rossi@example.com',
         ], 'mysql');
 
@@ -109,8 +111,8 @@ class UserRegistrationTest extends TestCase
         // Viene creata la membership con stato pending
         $this->assertDatabaseHas('tenant_memberships', [
             'global_user_id' => $identity->id,
-            'tenant_id'      => $this->tenant->id,
-            'state'          => 'pending',
+            'tenant_id' => $this->tenant->id,
+            'state' => 'pending',
         ], 'mysql');
     }
 
@@ -118,8 +120,8 @@ class UserRegistrationTest extends TestCase
     {
         // Creiamo un'identità globale già esistente (ad es. proveniente da un altro tenant)
         $existingIdentity = GlobalIdentity::create([
-            'name'     => 'Luigi Verdi',
-            'email'    => 'luigi.verdi@example.com',
+            'name' => 'Luigi Verdi',
+            'email' => 'luigi.verdi@example.com',
             'password' => Hash::make('OldPassword-123'),
         ]);
 
@@ -127,8 +129,8 @@ class UserRegistrationTest extends TestCase
 
         $response = $this->withServerVariables(['HTTP_HOST' => $this->tenantDomain])
             ->postJson($this->registerUrl(), [
-                'name'     => 'Luigi Verdi',
-                'email'    => 'luigi.verdi@example.com',
+                'name' => 'Luigi Verdi',
+                'email' => 'luigi.verdi@example.com',
                 'password' => 'NewPassword-123',
             ]);
 
@@ -150,8 +152,8 @@ class UserRegistrationTest extends TestCase
         // La membership pending viene creata correttamente
         $this->assertDatabaseHas('tenant_memberships', [
             'global_user_id' => $existingIdentity->id,
-            'tenant_id'      => $this->tenant->id,
-            'state'          => 'pending',
+            'tenant_id' => $this->tenant->id,
+            'state' => 'pending',
         ], 'mysql');
     }
 
@@ -160,8 +162,8 @@ class UserRegistrationTest extends TestCase
         // L'adminEmail è già registrata in questo tenant con stato 'accepted' (creata nel setUp)
         $response = $this->withServerVariables(['HTTP_HOST' => $this->tenantDomain])
             ->postJson($this->registerUrl(), [
-                'name'     => 'Admin Clone',
-                'email'    => $this->adminEmail,
+                'name' => 'Admin Clone',
+                'email' => $this->adminEmail,
                 'password' => 'Password-123',
             ]);
 
@@ -174,16 +176,16 @@ class UserRegistrationTest extends TestCase
         // Prima registrazione: crea global_identity e membership pending
         $this->withServerVariables(['HTTP_HOST' => $this->tenantDomain])
             ->postJson($this->registerUrl(), [
-                'name'     => 'Anna Bianchi',
-                'email'    => 'anna.bianchi@example.com',
+                'name' => 'Anna Bianchi',
+                'email' => 'anna.bianchi@example.com',
                 'password' => 'Password-123',
             ]);
 
         // Seconda registrazione con la stessa email: deve restituire errore
         $response = $this->withServerVariables(['HTTP_HOST' => $this->tenantDomain])
             ->postJson($this->registerUrl(), [
-                'name'     => 'Anna Bianchi',
-                'email'    => 'anna.bianchi@example.com',
+                'name' => 'Anna Bianchi',
+                'email' => 'anna.bianchi@example.com',
                 'password' => 'Password-456',
             ]);
 
@@ -204,8 +206,8 @@ class UserRegistrationTest extends TestCase
     {
         $response = $this->withServerVariables(['HTTP_HOST' => $this->tenantDomain])
             ->postJson($this->registerUrl(), [
-                'name'     => 'Mario Rossi',
-                'email'    => 'non-un-email-valida',
+                'name' => 'Mario Rossi',
+                'email' => 'non-un-email-valida',
                 'password' => 'Password-123',
             ]);
 
@@ -217,8 +219,8 @@ class UserRegistrationTest extends TestCase
     {
         $response = $this->withServerVariables(['HTTP_HOST' => $this->tenantDomain])
             ->postJson($this->registerUrl(), [
-                'name'     => 'Mario Rossi',
-                'email'    => 'mario.rossi@example.com',
+                'name' => 'Mario Rossi',
+                'email' => 'mario.rossi@example.com',
                 'password' => 'corta',
             ]);
 
