@@ -188,6 +188,7 @@ class TenantRegistrationService
         $tenantData = [
             'id' => $subdomain,
             'name' => $data['companyName'],
+            'description'     => $data['description'] ?? null, // ← aggiungi
             'plan_id' => $plan->id,
             'tenancy_db_name' => $dbName,
         ];

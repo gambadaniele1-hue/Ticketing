@@ -13,6 +13,7 @@ class TenantResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'plan_id' => $this->plan_id,
+            'description' => $this->description,
             // Aggiungi qui altri campi del tenant se servono al frontend (es. logo, dominio)
         ];
     }

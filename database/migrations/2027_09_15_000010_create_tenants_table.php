@@ -18,6 +18,7 @@ class CreateTenantsTable extends Migration
         Schema::create('tenants', function (Blueprint $table) {
             $table->string('id')->primary(); // id [cite: 208]
             $table->string('name'); // name [cite: 209]
+            $table->string('description')->nullable()->after('name');
             $table->foreignId('plan_id')->constrained('plans')->cascadeOnDelete(); // plan_id [cite: 213]
             
             $table->json('data')->nullable(); // Qui finiranno db_name, user, password ecc.

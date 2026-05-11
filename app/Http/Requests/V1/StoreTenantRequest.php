@@ -25,17 +25,17 @@ class StoreTenantRequest extends FormRequest
     }
 
     public function rules(): array
-    {
-        return [
-            'companyName' => ['required', 'string', 'max:255'],
-            // Validazione DNS-safe: solo minuscole, numeri e trattini (no underscore)
-            'subdomain' => ['required', 'string', 'min:3', 'max:63', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', 'unique:tenants,id'],
-            'adminName' => ['required', 'string', 'max:255'],
-            'adminEmail' => ['required', 'email', 'unique:global_identities,email'],
-            'adminPassword' => ['required', 'string', 'min:8'],
-            'planId' => ['required', 'exists:plans,id'],
-        ];
-    }
+{
+    return [
+        'companyName'  => ['required', 'string', 'max:255'],
+        'subdomain'    => ['required', 'string', 'min:3', 'max:63', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', 'unique:tenants,id'],
+        'adminName'    => ['required', 'string', 'max:255'],
+        'adminEmail'   => ['required', 'email', 'unique:global_identities,email'],
+        'adminPassword'=> ['required', 'string', 'min:8'],
+        'planId'       => ['required', 'exists:plans,id'],
+        'description'  => ['nullable', 'string', 'max:500'], // ← aggiungi
+    ];
+}
 
     /**
      * Messaggi di errore personalizzati per il frontend.
