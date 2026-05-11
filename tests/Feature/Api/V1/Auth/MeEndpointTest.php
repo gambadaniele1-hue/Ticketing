@@ -15,6 +15,7 @@ use App\Services\TenantRegistrationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Illuminate\Support\Facades\Redis;
 
 class MeEndpointTest extends TestCase
 {
@@ -29,6 +30,7 @@ class MeEndpointTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Redis::flushDB();
 
         // Prepariamo i dati standard
         $password = 'I-am-batman-123';

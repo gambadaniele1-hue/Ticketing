@@ -15,6 +15,7 @@ use App\Services\TenantRegistrationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Illuminate\Support\Facades\Redis;
 
 class RefreshTokenTest extends TestCase
 {
@@ -35,6 +36,7 @@ class RefreshTokenTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Redis::flushDB();
 
         $this->password = 'I-am-batman-123';
         $this->email = 'bruce+' . Str::lower(Str::random(8)) . '@wayne.com';

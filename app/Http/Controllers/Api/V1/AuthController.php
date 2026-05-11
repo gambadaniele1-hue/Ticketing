@@ -17,6 +17,7 @@ use App\Services\JwtService;
 use App\Services\UserRegistrationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Redis;
 
 class AuthController extends Controller
 {
@@ -74,13 +75,21 @@ class AuthController extends Controller
         $refreshToken = $this->jwtService->createRefreshToken($user);
 
         // 6. Creazione Cookie
-        $accessCookie = cookie('access_token', $accessToken, 60, '/', null, env('APP_ENV') !== 'local', true, false, 'Strict');
-        $refreshCookie = cookie('refresh_token', $refreshToken, 10080, '/', null, env('APP_ENV') !== 'local', true, false, 'Strict');
+        $cookiePath = config('session.path', '/');
+        $cookieDomain = config('session.domain');
+        $cookieSecure = config('session.secure');
+        $cookieSameSite = config('session.same_site', 'lax');
+
+        $accessCookie = cookie('access_token', $accessToken, 60, $cookiePath, $cookieDomain, $cookieSecure, true, false, $cookieSameSite);
+        $refreshCookie = cookie('refresh_token', $refreshToken, 10080, $cookiePath, $cookieDomain, $cookieSecure, true, false, $cookieSameSite);
+
+        $role = $localUser->role;
 
         return response()->json([
             'message' => 'Login completato con successo',
             'data' => [
                 'user' => new GlobalIdentityResource($user),
+                'role' => new RoleResource($role),
                 'tenant' => new TenantResource($currentTenant),
             ]
         ])->withCookie($accessCookie)->withCookie($refreshCookie);
@@ -136,12 +145,12 @@ class AuthController extends Controller
             'access_token',
             $newAccessToken,
             60,
-            '/',
-            null,
-            env('APP_ENV') !== 'local', // Secure solo in produzione
-            true,                       // HttpOnly
+            config('session.path', '/'),
+            config('session.domain'),
+            config('session.secure'),
+            true,
             false,
-            'Strict'                    // SameSite
+            config('session.same_site', 'lax')
         );
 
         // 9. Rispondiamo con il nuovo cookie
@@ -178,5 +187,45 @@ class AuthController extends Controller
                 'permissions' => PermissionResource::collection($localUser->role->permissions),
             ]
         ]);
+    }
+
+    public function storeTokens(Request $request)
+    {
+        $token = $request->query('token');
+
+        // 1. Token mancante
+        if (!$token) {
+            return redirect('/login?error=invalid');
+        }
+
+        // 2. Cerca in Redis
+        $payload = Redis::get("auth_handoff:{$token}");
+
+        // 3. Token scaduto o non esiste
+        if (!$payload) {
+            return redirect('/login?error=expired');
+        }
+
+        // 4. Recupera i token
+        $data = json_decode($payload, true);
+        $accessToken = $data['access_token'];
+        $refreshToken = $data['refresh_token'];
+
+        // 5. Cancella la chiave Redis — monouso!
+        Redis::del("auth_handoff:{$token}");
+
+        // 6. Setta i cookie HttpOnly sul dominio del sottodominio
+        $cookiePath = config('session.path', '/');
+        $cookieDomain = config('session.domain');
+        $cookieSecure = config('session.secure');
+        $cookieSameSite = config('session.same_site', 'lax');
+
+        $accessCookie = cookie('access_token', $accessToken, 60, $cookiePath, $cookieDomain, $cookieSecure, true, false, $cookieSameSite);
+        $refreshCookie = cookie('refresh_token', $refreshToken, 10080, $cookiePath, $cookieDomain, $cookieSecure, true, false, $cookieSameSite);
+
+        // 7. Redirect alla dashboard
+        return redirect('/dashboard')
+            ->withCookie($accessCookie)
+            ->withCookie($refreshCookie);
     }
 }

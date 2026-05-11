@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Jobs\SendOtpEmail;
+use App\Models\Global\OtpCode;
 use App\Exceptions\DatabaseAlreadyExistsException;
+use App\Jobs\CreateTenantAdminUser;
 use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Plan;
 use App\Models\Global\Tenant;
@@ -17,6 +20,7 @@ use Stancl\Tenancy\Database\Models\Domain;
 
 class TenantRegistrationService
 {
+    private string $lastOtp; // ← proprietà per passare l'OTP fuori dalla funzione
     public function register(array $data): Tenant
     {
         $plan = Plan::findOrFail($data['planId']);
@@ -30,8 +34,13 @@ class TenantRegistrationService
 
             // --- AGGIUNGI QUESTA RIGA ALLA FINE ---
             // Ora che la membership ESISTE SICURAMENTE, lanciamo il Job!
-            \App\Jobs\CreateTenantAdminUser::dispatchSync($tenant);
+            CreateTenantAdminUser::dispatch($tenant)
+                ->delay(now()->addSeconds(2))
+                ->afterCommit();
             // (Usiamo dispatchSync così in fase di registrazione l'utente viene creato subito prima di rispondere al frontend)
+
+            // Dispatchiamo il job email DOPO che tutto è andato bene
+            SendOtpEmail::dispatch($data['adminEmail'], $this->lastOtp);
 
             return $tenant;
         } catch (Exception $e) {
@@ -50,6 +59,9 @@ class TenantRegistrationService
         $tenant = $this->createTenantRecord($data, $plan);
         $this->createTenantDomain($tenant, $data['subdomain']);
         $this->linkIdentityToTenant($identity, $tenant);
+
+        // Genera e salva OTP
+        $this->lastOtp = $this->createOtp($identity);
 
         return $tenant;
     }
@@ -111,6 +123,7 @@ class TenantRegistrationService
             DB::connection('tenant')->table('sla_polices')->where('tenant_id', $tenant->id)->delete();
 
             DB::connection('tenant')->table('users')->where('tenant_id', $tenant->id)->delete();
+            DB::connection('otp_codes')->table('users')->where('tenant_id', $tenant->id)->delete();
 
             // Aggiungi qui altre tabelle riempite dal tuo Seeder
             // DB::connection('tenant')->table('products')->where('tenant_id', $tenant->id)->delete();
@@ -202,5 +215,18 @@ class TenantRegistrationService
             'global_user_id' => $identity->id,
             'state' => 'accepted',
         ]);
+    }
+
+    private function createOtp(GlobalIdentity $identity): string
+    {
+        $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        OtpCode::create([
+            'global_identity_id' => $identity->id,
+            'code' => Hash::make($code), // ← aggiungi Hash::make()
+            'expires_at' => now()->addMinutes(10),
+        ]);
+
+        return $code; // ← restituiamo il codice in chiaro per mandarlo via mail
     }
 }

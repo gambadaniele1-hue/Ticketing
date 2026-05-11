@@ -28,6 +28,7 @@ use Stancl\Tenancy\Jobs\CreateDatabase;
 use Stancl\Tenancy\Jobs\MigrateDatabase;
 use Stancl\Tenancy\Jobs\SeedDatabase;
 use Tests\TestCase;
+use Illuminate\Support\Facades\Redis;
 
 class TenantRegistrationServiceTest extends TestCase
 {
@@ -212,6 +213,7 @@ class TenantRegistrationServiceTest extends TestCase
 
     public function test_it_physically_creates_the_tenant_database_in_mysql(): void
     {
+        Redis::flushDB();
         $expectedDbName = 'tenant_starkphysical';
 
         // 0. PULIZIA PREVENTIVA: Se un test di ieri si è bloccato e ha lasciato il DB, piallalo prima di iniziare.
@@ -264,6 +266,7 @@ class TenantRegistrationServiceTest extends TestCase
 
     public function test_shared_plan_creates_local_user_in_tenant_database(): void
     {
+        Redis::flushDB();
         // 1. Arrange
         $plan = $this->createPlan('shared');
         $data = $this->registrationData([
@@ -306,6 +309,7 @@ class TenantRegistrationServiceTest extends TestCase
 
     public function test_dedicated_plan_creates_local_user_in_tenant_database(): void
     {
+        Redis::flushDB();
         // 1. Arrange
         $plan = $this->createPlan('dedicated');
         $expectedDbName = 'tenant_dedicateduser';
@@ -346,6 +350,7 @@ class TenantRegistrationServiceTest extends TestCase
 
     public function test_it_rolls_back_data_if_dedicated_registration_fails(): void
     {
+        Redis::flushDB();
         // 1. Arrange
         $plan = $this->createPlan('dedicated');
         $expectedDbName = 'tenant_faildomain';
@@ -407,6 +412,7 @@ class TenantRegistrationServiceTest extends TestCase
 
     public function test_it_rolls_back_everything_if_dedicated_seeding_fails(): void
     {
+        Redis::flushDB();
         $plan = $this->createPlan('dedicated');
         $expectedDbName = 'tenant_crashdomain';
 
@@ -464,6 +470,7 @@ class TenantRegistrationServiceTest extends TestCase
 
     public function test_it_rolls_back_data_if_shared_registration_fails(): void
     {
+        Redis::flushDB();
         $plan = $this->createPlan('shared');
 
         $data = [
