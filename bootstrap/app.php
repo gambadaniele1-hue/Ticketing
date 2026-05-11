@@ -34,4 +34,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        $exceptions->renderable(function (\Stancl\Tenancy\Exceptions\TenantCouldNotBeIdentifiedOnDomainException $e, $request) {
+            return response()->json([
+                'message' => 'Tenant non trovato',
+            ], 404);
+        });
     })->create();
