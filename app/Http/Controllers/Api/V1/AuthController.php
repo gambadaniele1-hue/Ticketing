@@ -224,8 +224,9 @@ class AuthController extends Controller
         $refreshCookie = cookie('refresh_token', $refreshToken, 10080, $cookiePath, $cookieDomain, $cookieSecure, true, false, $cookieSameSite);
 
         // 7. Redirect alla dashboard
-        return redirect('/dashboard')
-            ->withCookie($accessCookie)
-            ->withCookie($refreshCookie);
+        return response()->json([
+            'message'      => 'Autenticazione completata',
+            'redirect_url' => '/dashboard',
+        ])->withCookie($accessCookie)->withCookie($refreshCookie);
     }
 }
