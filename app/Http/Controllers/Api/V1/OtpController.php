@@ -62,8 +62,10 @@ class OtpController extends Controller
         // 5. Marca OTP come usato
         $otp->update(['used' => true]);
 
-        // 6. Marca l'identità come verificata
-        $identity->update(['email_verified_at' => now()]);
+        // 6. Marca l'identità come verificata (solo se non lo era già)
+        if (!$identity->email_verified_at) {
+            $identity->update(['email_verified_at' => now()]);
+        }
 
         // 7. Rilascia identity token
         $identityToken = $this->jwtService->createIdentityToken($identity);
