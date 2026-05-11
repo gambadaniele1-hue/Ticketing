@@ -225,8 +225,44 @@ class AuthController extends Controller
 
         // 7. Redirect alla dashboard
         return response()->json([
-            'message'      => 'Autenticazione completata',
+            'message' => 'Autenticazione completata',
             'redirect_url' => '/dashboard',
         ])->withCookie($accessCookie)->withCookie($refreshCookie);
+    }
+
+    public function logout(Request $request)
+    {
+        // 1. Legge il cookie refresh_token
+        $refreshToken = $request->cookie('refresh_token');
+
+        if (!$refreshToken) {
+            return response()->json(['message' => 'Non autorizzato.'], 401);
+        }
+
+        // 2. Cerca nel DB tramite hash SHA-256
+        $tokenHash = hash('sha256', $refreshToken);
+        $tokenRecord = RefreshToken::where('token', $tokenHash)
+            ->where('revoked', false)
+            ->first();
+
+        if (!$tokenRecord) {
+            return response()->json(['message' => 'Non autorizzato.'], 401);
+        }
+
+        // 3. Revoca il token
+        $tokenRecord->update(['revoked' => true]);
+
+        // 4. Cancella i cookie
+        $cookiePath = config('session.path', '/');
+        $cookieDomain = config('session.domain');
+        $cookieSecure = config('session.secure');
+        $cookieSameSite = config('session.same_site', 'lax');
+
+        $deleteAccess = cookie('access_token', '', -1, $cookiePath, $cookieDomain, $cookieSecure, true, false, $cookieSameSite);
+        $deleteRefresh = cookie('refresh_token', '', -1, $cookiePath, $cookieDomain, $cookieSecure, true, false, $cookieSameSite);
+
+        return response()->json([
+            'message' => 'Logout effettuato con successo',
+        ])->withCookie($deleteAccess)->withCookie($deleteRefresh);
     }
 }
