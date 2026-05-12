@@ -78,7 +78,7 @@
 
         <p>Accedi al pannello di controllo per accettare o rifiutare la richiesta.</p>
 
-        <a href="http://{{ $tenantId }}.{{ config('app.central_domain') }}:5173/login" class="button">Vai al
+        <a href="{{ $loginFrontendURL }}" class="button">Vai al
             pannello</a>
 
         <div class="footer">

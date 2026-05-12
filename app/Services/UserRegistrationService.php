@@ -70,7 +70,7 @@ class UserRegistrationService
             $globalIdentity = GlobalIdentity::find($adminUser->global_user_id);
 
             if ($globalIdentity) {
-                $loginUrl = 'http://' . $tenant->domains->first()->domain . '/login';
+                $loginFrontendURL = 'http://' . $tenant->domains->first()->domain . ':5173/login';
 
                 NotifyAdminNewUser::dispatch(
                     $globalIdentity->email,
@@ -78,9 +78,8 @@ class UserRegistrationService
                     $identity->name,
                     $identity->email,
                     $tenant->name,
-                    $loginUrl,
+                    $loginFrontendURL,
                     now()->format('d/m/Y H:i'),
-                    $tenant->id, // ← aggiungi
                 );
             }
         }

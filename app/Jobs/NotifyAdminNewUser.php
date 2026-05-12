@@ -16,9 +16,8 @@ class NotifyAdminNewUser implements ShouldQueue
         private readonly string $newUserName,
         private readonly string $newUserEmail,
         private readonly string $tenantName,
-        private readonly string $loginUrl,
+        private readonly string $loginFrontendURL,
         private readonly string $requestedAt,
-        private readonly string $tenantId, // ← aggiungi
     ) {
     }
 
@@ -32,11 +31,10 @@ class NotifyAdminNewUser implements ShouldQueue
                 'newUserName' => $this->newUserName,
                 'newUserEmail' => $this->newUserEmail,
                 'tenantName' => $this->tenantName,
-                'loginUrl' => $this->loginUrl,
+                'loginFrontendURL' => $this->loginFrontendURL,
                 'requestedAt' => $this->requestedAt,
-                'tenantId' => $this->tenantId, // ← aggiungi
             ])->render(),
-            'text' => "Ciao {$this->adminName}, l'utente {$this->newUserName} ({$this->newUserEmail}) vuole accedere a {$this->tenantName}. Accedi qui: {$this->loginUrl}",
+            'text' => "Ciao {$this->adminName}, l'utente {$this->newUserName} ({$this->newUserEmail}) vuole accedere a {$this->tenantName}. Accedi qui: {$this->loginFrontendURL}",
         ]));
     }
 }
