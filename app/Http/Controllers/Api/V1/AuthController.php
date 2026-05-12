@@ -48,11 +48,19 @@ class AuthController extends Controller
         // 1. Il pacchetto Tenancy ha già letto il sottodominio e caricato il tenant!
         $currentTenant = tenant();
 
-        // 2. Cerchiamo l'identità nel DB Globale (che è sempre accessibile)
+        // 2. Cerchiamo l'identità nel DB Globale
         $user = GlobalIdentity::where('email', $validated['email'])->first();
 
         if (!$user || !Hash::check($validated['password'], $user->password)) {
             return response()->json(['message' => 'Credenziali non valide', 'data' => null], 401);
+        }
+
+        // 2b. Verifica che l'email sia verificata
+        if (!$user->email_verified_at) {
+            return response()->json([
+                'message' => 'Email non verificata',
+                'error_code' => 'EMAIL_NOT_VERIFIED',
+            ], 403);
         }
 
         // 3. Verifica Appartenenza Tenant (Usiamo l'ID preso in automatico!)
