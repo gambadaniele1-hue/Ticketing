@@ -65,8 +65,25 @@ class AuthController extends Controller
 
         // 3. Verifica Appartenenza Tenant (Usiamo l'ID preso in automatico!)
         $membership = $user->memberships()->where('tenant_id', $currentTenant->id)->first();
-        if (!$membership || $membership->state !== 'accepted') {
-            return response()->json(['message' => 'Non hai accesso a questa area di lavoro.', 'data' => null], 403);
+        if (!$membership) {
+            return response()->json([
+                'message' => 'Non hai accesso a questa area di lavoro',
+                'error_code' => 'NO_MEMBERSHIP',
+            ], 403);
+        }
+
+        if ($membership->state === 'pending') {
+            return response()->json([
+                'message' => 'Il tuo accesso è in attesa di approvazione',
+                'error_code' => 'MEMBERSHIP_PENDING',
+            ], 403);
+        }
+
+        if ($membership->state === 'banned') {
+            return response()->json([
+                'message' => 'Il tuo accesso è stato revocato',
+                'error_code' => 'MEMBERSHIP_BANNED',
+            ], 403);
         }
 
         // 4. Siamo GIÀ nel DB del tenant grazie al middleware, cerchiamo il profilo locale

@@ -127,20 +127,43 @@ class OtpController extends Controller
     {
         $globalUserId = $request->attributes->get('global_user_id');
 
-        // 1. Verifica membership accepted
-        $tenant = Tenant::whereHas('memberships', function ($query) use ($globalUserId, $request) {
-            $query->where('global_user_id', $globalUserId)
-                ->where('state', 'accepted');
-        })->where('id', $request->tenant_id)->first();
+        // 1. Verifica che il tenant esista
+        $tenant = Tenant::where('id', $request->tenant_id)->first();
 
         if (!$tenant) {
-            return response()->json(['message' => 'Accesso non autorizzato a questo tenant'], 403);
+            return response()->json(['message' => 'Tenant non trovato'], 404);
         }
 
-        // 2. Inizializza il tenant
+        // 2. Verifica membership
+        $membership = $tenant->memberships()
+            ->where('global_user_id', $globalUserId)
+            ->first();
+
+        if (!$membership) {
+            return response()->json([
+                'message' => 'Non hai accesso a questo workspace',
+                'error_code' => 'NO_MEMBERSHIP',
+            ], 403);
+        }
+
+        if ($membership->state === 'pending') {
+            return response()->json([
+                'message' => 'Il tuo accesso è in attesa di approvazione',
+                'error_code' => 'MEMBERSHIP_PENDING',
+            ], 403);
+        }
+
+        if ($membership->state === 'banned') {
+            return response()->json([
+                'message' => 'Il tuo accesso è stato revocato',
+                'error_code' => 'MEMBERSHIP_BANNED',
+            ], 403);
+        }
+
+        // 3. Inizializza il tenant
         tenancy()->initialize($tenant);
 
-        // 3. Trova il profilo locale
+        // 4. Trova il profilo locale
         $localUser = User::where('global_user_id', $globalUserId)->first();
 
         if (!$localUser) {
@@ -148,15 +171,15 @@ class OtpController extends Controller
             return response()->json(['message' => 'Profilo utente non trovato'], 500);
         }
 
-        // 4. Carica il ruolo
+        // 5. Carica il ruolo
         $localUser->load('role');
 
-        // 5. Genera i token
+        // 6. Genera i token
         $identity = GlobalIdentity::find($globalUserId);
         $accessToken = $this->jwtService->createTenantAccessToken($identity, $tenant->id, $localUser->role_id);
         $refreshToken = $this->jwtService->createRefreshToken($identity);
 
-        // 6. Genera chiave handoff e salva in Redis
+        // 7. Genera chiave handoff e salva in Redis
         $key = Str::random(32);
 
         Redis::setex("auth_handoff:{$key}", 30, json_encode([
@@ -164,7 +187,7 @@ class OtpController extends Controller
             'refresh_token' => $refreshToken,
         ]));
 
-        // 7. Costruisci redirect URL usando il dominio reale del tenant
+        // 8. Costruisci redirect URL usando il dominio reale del tenant
         $tenantDomain = $tenant->domains()->first()?->domain;
 
         if (!$tenantDomain) {
