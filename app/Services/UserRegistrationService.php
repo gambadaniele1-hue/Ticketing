@@ -6,6 +6,7 @@ use App\Jobs\NotifyAdminNewUser;
 use App\Models\Global\GlobalIdentity;
 use App\Models\Global\Tenant;
 use App\Models\Global\TenantMembership;
+use App\Models\Tenant\Role;
 use App\Models\Tenant\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -43,6 +44,15 @@ class UserRegistrationService
         // Entriamo nel tenant per cercare gli admin
         tenancy()->initialize($tenant);
 
+        // Troviamo il ruolo base (es. User/Operator) da assegnare al nuovo utente
+        $defaultRole = Role::where('name', 'User')->first();
+
+        // Creiamo il profilo locale nel DB tenant
+        User::create([
+            'global_user_id' => $identity->id,
+            'role_id' => $defaultRole?->id,
+        ]);
+
         $adminUsers = User::whereHas('role', function ($query) {
             $query->where('name', 'Admin');
         })->get();
@@ -55,13 +65,14 @@ class UserRegistrationService
                 $loginUrl = 'http://' . $tenant->domains->first()->domain . '/login';
 
                 NotifyAdminNewUser::dispatch(
-                    $globalIdentity->email,        // email admin
-                    $globalIdentity->name,         // nome admin
-                    $identity->name,               // nome nuovo utente
-                    $identity->email,              // email nuovo utente
-                    $tenant->name,                 // nome workspace
-                    $loginUrl,                     // link pannello
-                    now()->format('d/m/Y H:i'),   // data richiesta
+                    $globalIdentity->email,
+                    $globalIdentity->name,
+                    $identity->name,
+                    $identity->email,
+                    $tenant->name,
+                    $loginUrl,
+                    now()->format('d/m/Y H:i'),
+                    $tenant->id, // ← aggiungi
                 );
             }
         }
