@@ -14,7 +14,7 @@ use App\Jobs\SendWelcomeEmail;
 
 class UserRegistrationService
 {
-    public function register(array $data, Tenant $tenant): TenantMembership
+    public function register(array $data, Tenant $tenant)
     {
         $identity = GlobalIdentity::where('email', $data['email'])->first();
 
@@ -46,6 +46,14 @@ class UserRegistrationService
 
         // Troviamo il ruolo base (es. Customer/Agent) da assegnare al nuovo utente
         $defaultRole = Role::where('name', 'Customer')->first();
+
+        if (!$defaultRole) {
+            tenancy()->end();
+            return response()->json([
+                'message' => 'Ruolo di default non trovato nel workspace',
+                'error_code' => 'DEFAULT_ROLE_NOT_FOUND',
+            ], 500);
+        }
 
         // Creiamo il profilo locale nel DB tenant
         User::create([
