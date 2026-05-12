@@ -44,8 +44,8 @@ class UserRegistrationService
         // Entriamo nel tenant per cercare gli admin
         tenancy()->initialize($tenant);
 
-        // Troviamo il ruolo base (es. User/Operator) da assegnare al nuovo utente
-        $defaultRole = Role::where('name', 'User')->first();
+        // Troviamo il ruolo base (es. Customer/Agent) da assegnare al nuovo utente
+        $defaultRole = Role::where('name', 'Customer')->first();
 
         // Creiamo il profilo locale nel DB tenant
         User::create([
