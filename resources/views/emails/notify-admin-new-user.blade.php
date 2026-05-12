@@ -78,7 +78,7 @@
 
         <p>Accedi al pannello di controllo per accettare o rifiutare la richiesta.</p>
 
-        <a href="{{ $loginUrl }}" class="button">Vai al pannello</a>
+        <a href="{{ rtrim(config('app.url'), '/') . '/login' }}" class="button">Vai al pannello</a>
 
         <div class="footer">
             Ticketing SaaS — Sistema automatico, non rispondere a questa email.
