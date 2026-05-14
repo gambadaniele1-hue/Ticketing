@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\DatabaseAlreadyExistsException;
+use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\JwtMiddleware;
 use App\Http\Middleware\VerifyIdentityToken;
@@ -29,8 +30,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
-            'jwt.auth' => JwtMiddleware::class,
-            'identity.auth' => VerifyIdentityToken::class, // ← aggiungi
+            'jwt.auth'      => JwtMiddleware::class,
+            'identity.auth' => VerifyIdentityToken::class,
+            'permission'    => CheckPermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
