@@ -1,4 +1,5 @@
 # 🎫 Ticketing API
+
 ### Backend REST — Laravel 12
 
 > API backend del sistema di ticketing multi-tenant ibrido. Gestisce autenticazione, routing per tenant, ruoli, permessi e l'intero ciclo di vita dei ticket.
@@ -13,14 +14,14 @@
 
 ## 🛠️ Stack
 
-| Componente | Versione |
-|---|---|
-| PHP | 8.2+ |
-| Laravel | 12.0 |
-| MySQL | — |
-| Redis | 7.x |
-| stancl/tenancy | ^3.10 |
-| firebase/php-jwt | ^7.0 |
+| Componente       | Versione |
+| ---------------- | -------- |
+| PHP              | 8.2+     |
+| Laravel          | 12.0     |
+| MySQL            | —        |
+| Redis            | 7.x      |
+| stancl/tenancy   | ^3.10    |
+| firebase/php-jwt | ^7.0     |
 
 ---
 
@@ -67,11 +68,11 @@ php artisan queue:work
 
 Il sistema usa **JWT custom** (`firebase/php-jwt`) con tre livelli di token, trasportati via cookie **HttpOnly + Secure + SameSite=Strict**.
 
-| Token | Durata | Scopo |
-|---|---|---|
-| Identity Token | 15 minuti | Flusso OTP — identifica l'utente prima della scelta del tenant |
-| Access Token | 1 ora | Autorizza le operazioni nel tenant, contiene `tenant_id` e `role_id` |
-| Refresh Token | 7 giorni | Rinnova l'access token, salvato nel DB come hash SHA-256 |
+| Token          | Durata    | Scopo                                                                |
+| -------------- | --------- | -------------------------------------------------------------------- |
+| Identity Token | 15 minuti | Flusso OTP — identifica l'utente prima della scelta del tenant       |
+| Access Token   | 1 ora     | Autorizza le operazioni nel tenant, contiene `tenant_id` e `role_id` |
+| Refresh Token  | 7 giorni  | Rinnova l'access token, salvato nel DB come hash SHA-256             |
 
 Il middleware `JwtMiddleware` verifica il `tenant_id` su ogni richiesta protetta per prevenire accessi cross-tenant. Il middleware `VerifyIdentityToken` protegge gli endpoint del flusso OTP globale.
 
@@ -81,29 +82,68 @@ Il middleware `JwtMiddleware` verifica il `tenant_id` su ogni richiesta protetta
 
 ### Dominio Centrale (`localhost`)
 
-| Metodo | Path | Descrizione | Auth |
-|---|---|---|---|
-| `POST` | `/api/v1/register-tenant` | Registrazione nuova azienda | Pubblica |
-| `GET` | `/api/v1/plans` | Lista piani disponibili | Pubblica |
-| `POST` | `/api/v1/auth/global-login/request-otp` | Richiesta OTP per login senza sottodominio | Pubblica |
-| `POST` | `/api/v1/auth/global-login/verify-otp` | Verifica OTP, emette Identity Token | Pubblica |
-| `GET` | `/api/v1/auth/global-login/tenants` | Lista tenant dell'utente | Identity Token |
-| `POST` | `/api/v1/auth/global-login/select-tenant` | Selezione tenant, handoff Redis | Identity Token |
-| `POST` | `/api/v1/auth/otp/verify` | Verifica OTP registrazione tenant | Pubblica |
+| Metodo | Path                                      | Descrizione                                | Auth           |
+| ------ | ----------------------------------------- | ------------------------------------------ | -------------- |
+| `POST` | `/api/v1/register-tenant`                 | Registrazione nuova azienda                | Pubblica       |
+| `GET`  | `/api/v1/plans`                           | Lista piani disponibili                    | Pubblica       |
+| `POST` | `/api/v1/auth/global-login/request-otp`   | Richiesta OTP per login senza sottodominio | Pubblica       |
+| `POST` | `/api/v1/auth/global-login/verify-otp`    | Verifica OTP, emette Identity Token        | Pubblica       |
+| `GET`  | `/api/v1/auth/global-login/tenants`       | Lista tenant dell'utente                   | Identity Token |
+| `POST` | `/api/v1/auth/global-login/select-tenant` | Selezione tenant, handoff Redis            | Identity Token |
+| `POST` | `/api/v1/auth/otp/verify`                 | Verifica OTP registrazione tenant          | Pubblica       |
 
 ### Dominio Tenant (`{subdomain}.localhost`)
 
-| Metodo | Path | Descrizione | Auth |
-|---|---|---|---|
-| `GET` | `/api/v1/tenant/info` | Info tenant corrente | Pubblica |
-| `POST` | `/api/v1/auth/login` | Login con email e password | Pubblica |
-| `POST` | `/api/v1/auth/register` | Registrazione utente nel tenant | Pubblica |
-| `POST` | `/api/v1/auth/refresh` | Rinnovo access token | Pubblica |
-| `GET` | `/api/v1/auth/me` | Dati utente corrente | JWT |
-| `POST` | `/api/v1/auth/logout` | Logout, revoca refresh token | JWT |
-| `GET` | `/api/v1/auth/store-tokens` | Handoff token cross-domain | Pubblica |
+| Metodo | Path                        | Descrizione                     | Auth     |
+| ------ | --------------------------- | ------------------------------- | -------- |
+| `GET`  | `/api/v1/tenant/info`       | Info tenant corrente            | Pubblica |
+| `POST` | `/api/v1/auth/login`        | Login con email e password      | Pubblica |
+| `POST` | `/api/v1/auth/register`     | Registrazione utente nel tenant | Pubblica |
+| `POST` | `/api/v1/auth/refresh`      | Rinnovo access token            | Pubblica |
+| `GET`  | `/api/v1/auth/me`           | Dati utente corrente            | JWT      |
+| `POST` | `/api/v1/auth/logout`       | Logout, revoca refresh token    | JWT      |
+| `GET`  | `/api/v1/auth/store-tokens` | Handoff token cross-domain      | Pubblica |
 
-> Gli endpoint Admin (stats, users, teams, categorie, SLA, macro) sono in sviluppo.
+### Endpoint Admin (`{subdomain}.localhost`) — Stub pronti
+
+| Metodo                | Path                                              | Descrizione                  | Auth                      |
+| --------------------- | ------------------------------------------------- | ---------------------------- | ------------------------- |
+| `GET`                 | `/api/v1/admin/stats`                             | Statistiche ticket per stato | JWT + `admin.dashboard`   |
+| `GET`                 | `/api/v1/admin/users`                             | Lista utenti                 | JWT + `users.manage`      |
+| `PATCH`               | `/api/v1/admin/users/{id}/approve`                | Approva membership           | JWT + `users.manage`      |
+| `PATCH`               | `/api/v1/admin/users/{id}/reject`                 | Rifiuta membership           | JWT + `users.manage`      |
+| `PATCH`               | `/api/v1/admin/users/{id}/suspend`                | Sospende utente              | JWT + `users.manage`      |
+| `PATCH`               | `/api/v1/admin/users/{id}/reactivate`             | Riattiva utente              | JWT + `users.manage`      |
+| `PATCH`               | `/api/v1/admin/users/{id}/role`                   | Cambia ruolo                 | JWT + `users.manage`      |
+| `GET/POST/PUT/DELETE` | `/api/v1/admin/teams`                             | CRUD team                    | JWT + `team.manage`       |
+| `GET/POST/DELETE`     | `/api/v1/admin/teams/{id}/members`                | Gestione membri              | JWT + `team.manage`       |
+| `PATCH`               | `/api/v1/admin/teams/{id}/members/{user_id}/role` | Cambia ruolo membro          | JWT + `team.manage`       |
+| `GET/POST/PUT/DELETE` | `/api/v1/admin/categories`                        | CRUD categorie               | JWT + `categories.manage` |
+| `POST/DELETE`         | `/api/v1/admin/categories/{id}/teams`             | Associa/rimuovi team         | JWT + `categories.manage` |
+| `GET/POST/PUT/DELETE` | `/api/v1/admin/sla`                               | CRUD SLA policy              | JWT + `sla.manage`        |
+| `GET`                 | `/api/v1/admin/macros`                            | Lista macro                  | JWT + `macros.view`       |
+
+### Endpoint Customer (`{subdomain}.localhost`) — Stub pronti
+
+| Metodo  | Path                                     | Descrizione         | Auth                   |
+| ------- | ---------------------------------------- | ------------------- | ---------------------- |
+| `GET`   | `/api/v1/customer/tickets`               | Lista ticket utente | JWT + `tickets.view`   |
+| `POST`  | `/api/v1/customer/tickets`               | Crea ticket         | JWT + `tickets.create` |
+| `GET`   | `/api/v1/customer/tickets/{id}`          | Dettaglio ticket    | JWT + `tickets.view`   |
+| `POST`  | `/api/v1/customer/tickets/{id}/messages` | Invia messaggio     | JWT + `tickets.reply`  |
+| `PATCH` | `/api/v1/customer/tickets/{id}/close`    | Chiude ticket       | JWT + `tickets.close`  |
+
+### Endpoint Agent (`{subdomain}.localhost`) — Stub pronti
+
+| Metodo  | Path                                  | Descrizione              | Auth                   |
+| ------- | ------------------------------------- | ------------------------ | ---------------------- |
+| `GET`   | `/api/v1/agent/tickets`               | Lista ticket tenant      | JWT + `tickets.view`   |
+| `GET`   | `/api/v1/agent/tickets/{id}`          | Dettaglio ticket         | JWT + `tickets.view`   |
+| `PATCH` | `/api/v1/agent/tickets/{id}/take`     | Prende in carico         | JWT + `tickets.assign` |
+| `POST`  | `/api/v1/agent/tickets/{id}/messages` | Messaggio o nota interna | JWT + `tickets.reply`  |
+| `PATCH` | `/api/v1/agent/tickets/{id}/status`   | Aggiorna stato           | JWT + `tickets.status` |
+
+> La logica di tutti gli endpoint stub è pianificata per le fasi successive.
 
 ---
 
@@ -203,11 +243,11 @@ La suite copre: registrazione tenant, autenticazione JWT, flusso OTP, refresh to
 
 ## 📦 Repository collegate
 
-| Repository | Descrizione |
-|---|---|
+| Repository                                                              | Descrizione                                  |
+| ----------------------------------------------------------------------- | -------------------------------------------- |
 | [`ticketing-mail`](https://github.com/gambadaniele1-hue/ticketing-mail) | Microservizio Go per l'invio email via Redis |
-| [`ticketing-app`](https://github.com/gambadaniele1-hue/ticketing-app) | Frontend React + Tailwind |
-| [`ticketing-docs`](https://github.com/gambadaniele1-hue/ticketing-docs) | Documentazione completa |
+| [`ticketing-app`](https://github.com/gambadaniele1-hue/ticketing-app)   | Frontend React + Tailwind                    |
+| [`ticketing-docs`](https://github.com/gambadaniele1-hue/ticketing-docs) | Documentazione completa                      |
 
 ---
 
@@ -217,4 +257,4 @@ Progetto realizzato come elaborato di quinta superiore — Informatica.
 
 ---
 
-*API v1.2 — Laravel 12*
+_API v1.3 — Laravel 12_
